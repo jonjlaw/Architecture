@@ -68,6 +68,14 @@ body.running .edge.flow .ln{animation-play-state:running}
 .grp.faulty .gbox{stroke:var(--wa)}
 .grp.idle .gbox{fill:#8391a308;stroke:#55627a}.grp.idle .gst{fill:#8391a3}
 .grp.down .gbox{stroke:var(--er);fill:#f8514912}.grp.down .ghd{fill:#3a1719}
+.grp .gtab{fill:#16233a;stroke:#3b5273;cursor:pointer}.grp .gtab:hover{stroke:var(--ac)}.grp .gtab.on{fill:#2f6fc4;stroke:#6cb6ff}
+.grp .gtabt{font-size:10.5px;text-anchor:middle}
+.grp .gsec{fill:#101a2a;stroke:#2c3d57;stroke-width:1.2;cursor:pointer}.grp .gsec:hover{stroke:var(--ac)}.grp .gsec.idle{fill:#141a22;stroke:#3a4353}.grp .gsec.faulty{stroke:var(--wa)}
+.grp .gsec.down{fill:#3a1719;stroke:var(--er)}.grp .gsec.on{stroke:var(--ac);stroke-width:2.2}
+.grp .gs1{font-size:11px;font-weight:600}.grp .gs2{font-size:10px;fill:#a9b6c6}
+.node .trow rect{fill:#0f1620;stroke:#2c394b;stroke-width:1.1}.node .trow:hover rect{stroke:var(--ac)}
+.node .trow text{font-size:10.5px;fill:#b7c3d2;pointer-events:none;font-variant-numeric:tabular-nums}
+.node .trow .tin{fill:#2c394b;pointer-events:none}
 .node .one{cursor:pointer}.node .one rect{fill:#1f4f8f;stroke:#2f6fc4;stroke-width:1}.node .one:hover rect{fill:#2f6fc4}.node .one text{fill:#fff;font-size:10px}
 #bManual.on{background:#463610;border-color:#d29922}
 #tmp{fill:none;stroke:var(--ac);stroke-width:2;stroke-dasharray:5 4;pointer-events:none}
@@ -211,6 +219,7 @@ const TYPES={
  cron:{kind:'producer',label:'Scheduler / Cron',group:'Sources',icon:'⏱',desc:'Releases a batch of messages on a schedule (a nightly job), or ticks at a steady rate.',d:{mode:'schedule',everyS:15,release:'200',rateMin:1,rateMax:1,spacing:'even'}},
  service:{kind:'service',label:'Service',group:'Compute',icon:'⚙',desc:'Handles requests or events and performs ordered actions.'},
  worker:{kind:'service',label:'Worker / Consumer',group:'Compute',icon:'🛠',desc:'Background consumer of a topic or queue.',d:{concurrency:4}},
+ poller:{kind:'service',label:'Polling loop / relay',group:'Compute',icon:'🔁',desc:'Reads rows from a database work table in batches (connect a table\'s ● to it), then performs its actions for each row.',d:{concurrency:4,procMs:5}},
  fn:{kind:'service',label:'Serverless Function',group:'Compute',icon:'λ',desc:'High concurrency, small buffer.',d:{concurrency:100,procMs:40,queueCap:10}},
  lb:{kind:'proxy',label:'Load Balancer',group:'Traffic',icon:'⚖',desc:'Spreads calls across its targets.'},
  gateway:{kind:'proxy',label:'API Gateway',group:'Traffic',icon:'🚪',desc:'Single entry point; optional rate limit.',d:{latency:3}},
@@ -236,7 +245,7 @@ const KDEF={
  producer:{rateMin:5,rateMax:10,pattern:'steady',period:20,spacing:'poisson',op:'write',keys:20,keyspace:'',badPct:0,dupPct:0,timeout:2000,retries:0,backoff:200,mode:'rate',everyS:15,release:'200',spreadMs:0,perInstance:false},
  service:{concurrency:8,procMs:20,queueCap:100,respond:'after',idempotent:false,badData:'reject',rateLimit:0,restartMs:3000,
   outboxMode:'poll',outboxPollMs:100,outboxBatch:50,outboxSend:'seq',outboxMark:'each',outboxTimeout:500,inbox:false,inboxPollMs:200,inboxBatch:20,inboxMax:5,inboxCap:10000,actions:[]},
- store:{latency:5,maxConc:20,queueCap:200,idempotent:false,supportsTx:true,replicaLag:0},
+ store:{latency:5,maxConc:20,queueCap:200,idempotent:false,supportsTx:true,replicaLag:0,tables:[]},
  external:{latency:150,maxConc:100,queueCap:100,rateLimit:0,idempotent:false},
  cache:{latency:1,ttlMs:10000,capacity:1000,onWrite:'update',writeThrough:false,timeout:1000},
  log:{latency:3,partitions:4,retention:5000,rateLimit:0,idempotent:false},
@@ -259,10 +268,17 @@ const FDEF={
 };
 const EFDEF={partition:false,drop:0,respDrop:0,reset:0,corrupt:0,dup:0,extraLatency:0};
 const SUBD={ack:'after',maxAttempts:3,backoff:500,onExhaust:'dlq',timeout:5000,prefetch:10,group:''};
-/* app / host groups: a box on the canvas whose member nodes share instances, deployment state and faults */
+/* apps: a box on the canvas is one application, deployed as clusters (shards) → server groups (builds) → regions (data centres with instances) */
 const NODE_W=176,NODE_H=76;
-const GDEF={version:'',instances:1,weight:100,stopped:false,startMs:3000,detectMs:2000,canarySteps:'5,25,50,100',canaryStepS:6,canaryRollback:10};
-const GFDEF={down:false,instDown:0,errorRate:0,latencyMult:1,partition:false,weight:null,stopped:null};
+const GDEF={startMs:3000,detectMs:2000,sticky:false,canarySteps:'5,25,50,100',canaryStepS:6,canaryRollback:10};
+const GFDEF={down:false,partition:false},CFDEF={down:false},RFDEF={down:false};
+const SGDEF={weight:100,stopped:false,consume:'shared'};
+const SFDEF={down:false,instDown:0,errorRate:0,latencyMult:1,weight:null,stopped:null};
+/* kinds that run once per server group (cloned at run time) and kinds that can belong to an app at all */
+const REPL={service:1,proxy:1,cache:1},MEMB={service:1,proxy:1,cache:1,producer:1};
+/* a polling loop reading a database work table */
+const POLLD={everyMs:200,batch:20,send:'keyed',mark:'each',maxAttempts:5,backoff:1000,onExhaust:'park',timeout:5000};
+const TID=x=>x.tid||x.id;
 const ACTD={op:'write',tx:false,outbox:false,onError:'abort',when:'always',await:true,timeout:1000,retries:0,backoff:100,breaker:false,failPct:0};
 const MSGK={log:1,queue:1,pubsub:1};
 
@@ -272,47 +288,80 @@ function addNode(m,type,x,y,name,cfg){const T=TYPES[type],k=T.kind;
  if(!name){const base=k==='note'?'Label':T.label.split(/[ /(]/)[0].toLowerCase();let i=1;while(m.nodes.some(n=>n.name===base+'-'+i))i++;name=k==='note'?'Label':base+'-'+i}
  const n={id:'n'+(m.seq++),type,name,x:Math.round(x),y:Math.round(y),cfg:Object.assign(clone(KDEF[k]),T.d||{},cfg||{}),fault:clone(FDEF[k])};
  m.nodes.push(n);m.rev=(m.rev|0)+1;return n}
-function canConnect(m,a,b){const ka=KIND(a),kb=KIND(b);
+function tableOf(n,id){const ts=n&&n.cfg&&n.cfg.tables;if(ts&&id)for(const t of ts)if(t.id===id)return t;return null}
+function addTable(m,n,name,kind){const t={id:'t'+(m.seq++),name:name||'table',kind:kind||'data'};(n.cfg.tables||(n.cfg.tables=[])).push(t);m.rev=(m.rev|0)+1;return t}
+function removeTable(m,n,id){for(const e of m.edges.filter(e=>e.cfg.table===id&&(e.from===n.id||e.to===n.id))){if(e.from===n.id)removeEdge(m,e.id);else delete e.cfg.table}
+ n.cfg.tables=(n.cfg.tables||[]).filter(t=>t.id!==id);m.rev=(m.rev|0)+1}
+function canConnect(m,a,b,table){const ka=KIND(a),kb=KIND(b);
  if(a===b)return'A node cannot be connected to itself';
  if(ka==='note'||kb==='note')return'Labels cannot be connected';
  if(kb==='producer')return'Sources only emit — nothing can call them';
- if(ka==='store'||ka==='external')return a.name+' only responds — it cannot initiate calls';
+ if(ka==='external')return a.name+' only responds — it cannot initiate calls';
+ if(ka==='store'){if(kb!=='service')return'A table can only be read by a polling loop or a service';const t=tableOf(a,table);
+  if(!t)return a.name+' only responds. To read from it, add a work table and drag from the ● on that table\'s row';
+  if(t.kind!=='queue')return t.name+' is not a work table, so nothing polls it';}
  if(ka==='cache'){if(kb!=='store')return'A cache can only read through to a database';if(m.edges.some(e=>e.from===a.id))return'This cache already has a backing store'}
- if(m.edges.some(e=>e.from===a.id&&e.to===b.id))return'Already connected';
+ if(m.edges.some(e=>e.from===a.id&&e.to===b.id&&(e.cfg.table||'')===(table||'')))return'Already connected';
  return null}
 function addEdge(m,from,to,o){o=o||{};const a=m.nodes.find(n=>n.id===from),b=m.nodes.find(n=>n.id===to),ka=KIND(a),kb=KIND(b);
  const e={id:'e'+(m.seq++),from,to,cfg:Object.assign({latency:2},o.cfg||{}),fault:clone(EFDEF)};
  if(ka==='log'||ka==='queue')e.cfg.sub=Object.assign(clone(SUBD),o.sub||{});
+ if(ka==='store')e.cfg.poll=Object.assign(clone(POLLD),o.poll||{});
  m.edges.push(e);
  if(ka==='service')a.cfg.actions.push(Object.assign({id:'a'+(m.seq++),edge:e.id},clone(ACTD),kb==='cache'?{op:'read'}:{},o.act||{}));
  m.rev=(m.rev|0)+1;return e}
 function removeEdge(m,id){m.edges=m.edges.filter(e=>e.id!==id);for(const n of m.nodes)if(n.cfg.actions)n.cfg.actions=n.cfg.actions.filter(a=>a.edge!==id);m.rev=(m.rev|0)+1}
 function removeNode(m,id){for(const e of m.edges.filter(e=>e.from===id||e.to===id))removeEdge(m,e.id);m.nodes=m.nodes.filter(n=>n.id!==id);m.rev=(m.rev|0)+1}
-function addGroup(m,x,y,w,h,name,cfg){let i=1;if(!name){while(m.groups.some(g=>g.name==='app-'+i))i++;name='app-'+i}
- const g={id:'g'+(m.seq++),name,x:Math.round(x),y:Math.round(y),w:Math.round(w||260),h:Math.round(h||150),cfg:Object.assign(clone(GDEF),cfg||{}),fault:clone(GFDEF)};
+/* deployment hierarchy */
+function mkRegion(m,name,inst){return{id:'r'+(m.seq++),name:name||'region-1',instances:Math.max(1,inst|0||1),fault:clone(RFDEF)}}
+function mkSg(m,o){o=o||{};return{id:'v'+(m.seq++),name:o.name||'main',cfg:Object.assign(clone(SGDEF),{weight:o.weight==null?100:o.weight,stopped:!!o.stopped,consume:o.consume||'shared'}),
+ regions:(o.regions&&o.regions.length?o.regions:[['region-1',1]]).map(x=>mkRegion(m,x[0],x[1])),fault:clone(SFDEF)}}
+function mkCluster(m,o){o=o||{};const c={id:'c'+(m.seq++),name:o.name||'cluster-1',sgs:(o.sgs&&o.sgs.length?o.sgs:[{}]).map(s=>mkSg(m,s)),fault:clone(CFDEF)};fixWeights(c);return c}
+/* the server groups of one cluster always share exactly 100% of its traffic; "keep" is the one the user just edited */
+function fixWeights(c,keep){const ss=c.sgs;if(!ss.length)return;for(const s of ss)s.cfg.weight=Math.max(0,Math.min(100,Math.round(+s.cfg.weight||0)));
+ if(ss.length===1){ss[0].cfg.weight=100;return}
+ const others=ss.filter(s=>s!==keep),target=100-(keep?keep.cfg.weight:0);let sum=0;for(const s of others)sum+=s.cfg.weight;
+ if(sum===target)return;if(sum<=0){others[0].cfg.weight=target;return}
+ let acc=0;others.forEach((s,i)=>{if(i===others.length-1)s.cfg.weight=Math.max(0,target-acc);else{s.cfg.weight=Math.round(s.cfg.weight*target/sum);acc+=s.cfg.weight}})}
+function addGroup(m,x,y,w,h,name,o){o=o||{};let i=1;if(!name){while(m.groups.some(g=>g.name==='app-'+i))i++;name='app-'+i}
+ const g={id:'g'+(m.seq++),name,x:Math.round(x),y:Math.round(y),w:Math.round(w||300),h:Math.round(h||200),cfg:Object.assign(clone(GDEF),o.cfg||{}),fault:clone(GFDEF),clusters:[]};
+ for(const c of (o.clusters&&o.clusters.length?o.clusters:[{}]))g.clusters.push(mkCluster(m,c));
  m.groups.push(g);regroup(m);m.rev=(m.rev|0)+1;return g}
 function removeGroup(m,id){m.groups=m.groups.filter(g=>g.id!==id);regroup(m);m.rev=(m.rev|0)+1}
-/* membership is geometric: a node belongs to the smallest group that contains its centre */
+/* membership is geometric: a node belongs to the smallest app box that contains its centre. Databases, brokers and external APIs are never part of an app. */
 function regroup(m){let ch=false;for(const n of m.nodes){let best=null,ba=Infinity;
-  if(KIND(n)!=='note'){const cx=n.x+NODE_W/2,cy=n.y+NODE_H/2;for(const g of m.groups||[])if(cx>=g.x&&cx<=g.x+g.w&&cy>=g.y&&cy<=g.y+g.h&&g.w*g.h<ba){best=g.id;ba=g.w*g.h}}
+  if(MEMB[KIND(n)]){const cx=n.x+NODE_W/2,cy=n.y+NODE_H/2;for(const g of m.groups||[])if(cx>=g.x&&cx<=g.x+g.w&&cy>=g.y&&cy<=g.y+g.h&&g.w*g.h<ba){best=g.id;ba=g.w*g.h}}
   if((n.group||null)!==best){ch=true;if(best)n.group=best;else delete n.group}}
  if(ch)m.rev=(m.rev|0)+1;return ch}
 function normalize(m){m.nodes=(m.nodes||[]).filter(n=>TYPES[n.type]);m.edges=m.edges||[];m.groups=m.groups||[];m.scenarios=m.scenarios||[];m.desc=m.desc||'';m.rev=0;let mx=0;
  const bump=id=>{const v=parseInt(String(id).slice(1),10);if(v>mx)mx=v};
- for(const g of m.groups){bump(g.id);g.cfg=Object.assign(clone(GDEF),g.cfg||{});g.fault=Object.assign(clone(GFDEF),g.fault||{})}
- for(const n of m.nodes){const k=KIND(n);bump(n.id);if(n.type==='cron'&&n.cfg&&n.cfg.mode===undefined&&n.cfg.rateMin!==undefined)n.cfg.mode='rate';n.cfg=Object.assign(clone(KDEF[k]),TYPES[n.type].d||{},n.cfg||{});n.fault=Object.assign(clone(FDEF[k]),n.fault||{});
-  if(k==='service')n.cfg.actions=(n.cfg.actions||[]).map(a=>{bump(a.id);return Object.assign(clone(ACTD),a)})}
+ for(const g of m.groups){bump(g.id);for(const c of g.clusters||[]){bump(c.id);for(const s of c.sgs||[]){bump(s.id);for(const r of s.regions||[])bump(r.id)}}}
+ for(const n of m.nodes){bump(n.id);if(n.cfg){for(const a of n.cfg.actions||[])bump(a.id);for(const t of n.cfg.tables||[])bump(t.id)}}
+ for(const e of m.edges)bump(e.id);for(const s of m.scenarios)bump(s.id);
+ m.seq=Math.max(m.seq|0,mx+1);
+ for(const g of m.groups){const old=g.cfg||{},of=g.fault||{},nc=clone(GDEF);for(const k in GDEF)if(old[k]!==undefined)nc[k]=old[k];g.cfg=nc;g.fault={down:!!of.down,partition:!!of.partition};
+  /* older files: one box = one build with a flat instance count */
+  if(!Array.isArray(g.clusters)||!g.clusters.length)g.clusters=[mkCluster(m,{sgs:[{name:old.version||'main',stopped:old.stopped,regions:[['region-1',old.instances||1]]}]})];
+  for(const c of g.clusters){c.name=c.name||'cluster';c.fault=Object.assign(clone(CFDEF),c.fault||{});if(!Array.isArray(c.sgs)||!c.sgs.length)c.sgs=[mkSg(m)];
+   for(const s of c.sgs){s.name=s.name||'main';s.cfg=Object.assign(clone(SGDEF),s.cfg||{});s.fault=Object.assign(clone(SFDEF),s.fault||{});if(!Array.isArray(s.regions)||!s.regions.length)s.regions=[mkRegion(m)];
+    for(const r of s.regions){r.instances=Math.max(1,r.instances|0||1);r.fault=Object.assign(clone(RFDEF),r.fault||{})}}
+   fixWeights(c)}}
+ for(const n of m.nodes){const k=KIND(n);if(n.type==='cron'&&n.cfg&&n.cfg.mode===undefined&&n.cfg.rateMin!==undefined)n.cfg.mode='rate';n.cfg=Object.assign(clone(KDEF[k]),TYPES[n.type].d||{},n.cfg||{});n.fault=Object.assign(clone(FDEF[k]),n.fault||{});
+  if(k==='service')n.cfg.actions=(n.cfg.actions||[]).map(a=>Object.assign(clone(ACTD),a));
+  if(k==='store')n.cfg.tables=(n.cfg.tables||[]).filter(t=>t&&t.id).map(t=>({id:t.id,name:t.name||'table',kind:t.kind==='queue'||t.kind==='dedupe'?t.kind:'data'}))}
  const ids=new Set(m.nodes.map(n=>n.id));m.edges=m.edges.filter(e=>ids.has(e.from)&&ids.has(e.to));
- for(const e of m.edges){bump(e.id);e.cfg=Object.assign({latency:2},e.cfg||{});e.fault=Object.assign(clone(EFDEF),e.fault||{});
-  const ka=KIND(m.nodes.find(n=>n.id===e.from));if(ka==='log'||ka==='queue')e.cfg.sub=Object.assign(clone(SUBD),e.cfg.sub||{})}
- m.seq=Math.max(m.seq|0,mx+1);if(!m.seed)m.seed=12345;regroup(m);m.rev=0;return m}
+ for(const e of m.edges){e.cfg=Object.assign({latency:2},e.cfg||{});e.fault=Object.assign(clone(EFDEF),e.fault||{});
+  const a=m.nodes.find(n=>n.id===e.from),ka=KIND(a);if(ka==='log'||ka==='queue')e.cfg.sub=Object.assign(clone(SUBD),e.cfg.sub||{});
+  if(ka==='store')e.cfg.poll=Object.assign(clone(POLLD),e.cfg.poll||{})}
+ m.edges=m.edges.filter(e=>{const a=m.nodes.find(n=>n.id===e.from);return KIND(a)!=='store'||!!tableOf(a,e.cfg.table)});
+ if(!m.seed)m.seed=12345;regroup(m);m.rev=0;return m}
 
 const AFLAGS=['lost','duplicate','partial','ghost','corrupt','ooo','stale','parked'];
 function newAuditRow(){return{created:0,done:0,ok:0,fail:0,clean:0,cleanFail:0,rejected:0,anom:0,degraded:0,lost:0,duplicate:0,partial:0,ghost:0,corrupt:0,ooo:0,stale:0,parked:0}}
 
 class Sim{
  constructor(model,hooks){this.m=model;this.hk=hooks||{};this.t=0;this.n=0;this.heap=new Heap();this.rts=new Map();this.ess=new Map();
-  this.rand=mulberry32(model.seed||12345);this.idx=null;this.idxRev=-1;this.lastWrite=new Map();this.trN=0;this.neg=0;this.lagging=false;this.grts=new Map();this.manual=false;this.coTok=0;
+  this.rand=mulberry32(model.seed||12345);this.idx=null;this.idxRev=-1;this.lastWrite=new Map();this.trN=0;this.neg=0;this.lagging=false;this.grts=new Map();this.manual=false;this.co=new Map();this.cln=new Map();
   this.A=Object.assign(newAuditRow(),{dedup:0,by:{},recent:[]});
   this.G={ok:0,err:0,retries:0,timeouts:0,lat:[],hist:[],snap:[]};
   this.logs=[];this.marks=[];
@@ -321,11 +370,28 @@ class Sim{
  advance(dt){const end=this.t+dt,h=this.heap;let c=0;
   while(h.a.length&&h.a[0].t<=end){const ev=h.pop();this.t=ev.t;ev.fn();if(++c>200000){this.lagging=true;return}}
   this.lagging=false;this.t=end}
- ix(){const m=this.m;if(this.idxRev!==m.rev||!this.idx){const nm=new Map(),em=new Map(),out=new Map();
-   for(const n of m.nodes){nm.set(n.id,n);out.set(n.id,[])}
-   for(const e of m.edges){if(!nm.has(e.from)||!nm.has(e.to))continue;em.set(e.id,e);out.get(e.from).push(e)}
-   const gm=new Map();for(const g of m.groups||[])gm.set(g.id,g);
-   this.idx={nm,em,out,gm};this.idxRev=m.rev}return this.idx}
+ /* run-time index. A service, proxy or cache inside an app with several server groups runs once per server group:
+    each copy ("clone") is its own node with its own state, sharing the template's configuration through the prototype chain. */
+ ix(){const m=this.m;if(this.idxRev===m.rev&&this.idx)return this.idx;
+  const nm=new Map(),em=new Map(),out=new Map(),gm=new Map(),gi=new Map(),sgm=new Map(),sgl=[],cl=new Map(),rep1=new Map(),run=[];
+  for(const g of m.groups||[]){gm.set(g.id,g);const reps=[];for(const c of g.clusters||[])for(const s of c.sgs||[]){const i={g,c,s};sgm.set(s.id,i);sgl.push(i);reps.push(i)}gi.set(g.id,{g,reps,multi:reps.length>1})}
+  for(const n of m.nodes){nm.set(n.id,n);out.set(n.id,[]);const G=n.group&&gi.get(n.group),k=KIND(n);
+   if(G&&G.multi&&REPL[k]){const a=[];for(const i of G.reps){const c=this.mkClone(n,i);a.push(c);nm.set(c.id,c);out.set(c.id,[]);run.push(c)}cl.set(n.id,a)}
+   else{run.push(n);if(G&&!G.multi&&MEMB[k])rep1.set(n.id,G.reps[0].s)}}
+  for(const e of m.edges){const a=nm.get(e.from),b=nm.get(e.to);if(!a||!b)continue;em.set(e.id,e);const A=cl.get(e.from),B=cl.get(e.to),ka=KIND(a);
+   if(A){out.get(e.from).push(e);for(const x of A){const ce=this.mkCloneE(e,x.rep.id,x.id,B&&a.group===b.group?e.to+'@'+x.rep.id:e.to);em.set(ce.id,ce);out.get(x.id).push(ce)}}
+   /* brokers and work tables deliver to every copy of a consumer (they compete); everything else sends one request that is routed on arrival */
+   else if(B&&(ka==='log'||ka==='queue'||ka==='store'))for(const x of B){const ce=this.mkCloneE(e,x.rep.id,e.from,x.id);em.set(ce.id,ce);out.get(e.from).push(ce)}
+   else out.get(e.from).push(e)}
+  const ids=new Set();for(const n of run)ids.add(n.id);let stale=false;for(const [id,r] of this.rts)if(!ids.has(id)&&!r.gone){r.gone=1;stale=true}
+  this.idx={nm,em,out,gm,gi,sgm,sgl,cl,rep1,run,ids};this.idxRev=m.rev;
+  if(stale)this.at(0,()=>this.gc());return this.idx}
+ mkClone(n,i){const id=n.id+'@'+i.s.id;let c=this.cln.get(id);
+  if(!c||Object.getPrototypeOf(c)!==n){c=Object.create(n);c.id=id;c.tid=n.id;Object.defineProperty(c,'name',{get(){return n.name+' ['+this.lbl+']'}});this.cln.set(id,c)}
+  c.rep=i.s;c.clu=i.c;c.lbl=(i.g.clusters.length>1?i.c.name+' / ':'')+i.s.name;return c}
+ mkCloneE(e,sid,from,to){const id=e.id+'@'+sid;let c=this.cln.get(id);if(!c||Object.getPrototypeOf(c)!==e){c=Object.create(e);c.id=id;c.tid=e.id;this.cln.set(id,c)}c.from=from;c.to=to;return c}
+ /* a copy that no longer exists (its server group was removed, or the node left the app) drops its work */
+ gc(){const x=this.ix();for(const [id,r] of this.rts){if(x.ids.has(id)){r.gone=0;continue}if(r.gone===1){r.gone=2;if(r.n&&x.nm.has(TID(r.n)))this.forget1(r.n)}}}
  node(id){return this.ix().nm.get(id)}
  edge(id){return this.ix().em.get(id)}
  outs(id){return this.ix().out.get(id)||[]}
@@ -333,11 +399,11 @@ class Sim{
  jit(base,j){const v=base*(1+j*(this.rand()*2-1));return v>0?v:0}
  log(level,msg){this.logs.push({t:this.t,level,msg});if(this.logs.length>400)this.logs.shift()}
  mark(label){this.marks.push({t:this.t,label});if(this.marks.length>40)this.marks.shift()}
- vis(eid,k){const v=this.hk.vis;if(v)v(eid,k)}
+ vis(eid,k){const v=this.hk.vis;if(v)v(String(eid).split('@')[0],k)}
  tlog(tr,code,nid,x){if(tr.ev.length<40)tr.ev.push([this.t,code,nid,x])}
  lat(r,v){if(r.lat.length<300)r.lat.push(v)}
  rt(n){let r=this.rts.get(n.id);if(r)return r;const k=KIND(n);
-  r={c:{in:0,ok:0,err:0},snap:[],rate:{in:0,ok:0,err:0},lat:[],p50:0,p99:0,hist:[],busy:0,q:new Dq(),tok:null,tokT:0,rr:0};
+  r={n,c:{in:0,ok:0,err:0},snap:[],rate:{in:0,ok:0,err:0},lat:[],p50:0,p99:0,hist:[],busy:0,q:new Dq(),tok:null,tokT:0,rr:0};
   if(k==='service')Object.assign(r,{epoch:0,downUntil:0,inflight:new Set(),outbox:new Dq(),relaying:false,obT:false,obEp:0,inbox:new Dq(),ibFly:0,ibT:false,brk:{},lastSeq:new Map(),once:0,actOnce:{},wasDown:false});
   else if(k==='log'){r.parts=[];for(let i=0;i<Math.max(1,n.cfg.partitions|0);i++)r.parts.push({log:[],base:0,h:0});r.groups=new Map();r.ks={}}
   else if(k==='queue'){r.ready=new Dq();r.infl=0;r.win={};r.ks={}}
@@ -345,34 +411,63 @@ class Sim{
   else if(k==='proxy'){r.hl={};r.out={}}
   else if(k==='producer'){r.seq={};r.started=false;r.cur=0;r.nextRe=0;r.last=null;r.fireN=0;r.lastCount=0}
   this.rts.set(n.id,r);return r}
- est(e){let s=this.ess.get(e.id);if(!s){s={sent:0,fail:0,drop:0,dup:0,snap:[],rate:0,frate:0};this.ess.set(e.id,s)}return s}
+ est(e){const id=TID(e);let s=this.ess.get(id);if(!s){s={sent:0,fail:0,drop:0,dup:0,snap:[],rate:0,frate:0};this.ess.set(id,s)}return s}
  bucket(r,rate){const cap=Math.max(1,rate*0.5);if(r.tok===null){r.tok=cap;r.tokT=this.t}
   r.tok=Math.min(cap,r.tok+(this.t-r.tokT)*rate/1000);r.tokT=this.t;if(r.tok<1)return false;r.tok-=1;return true}
  isUp(n){if(this.off(n))return false;const r=this.rts.get(n.id);return!(r&&r.downUntil>this.t)}
 
- /* ---------- app groups: instances, deployment state, shared faults ---------- */
- grp(n){return n.group?this.ix().gm.get(n.group):undefined}
- grt(g){let r=this.grts.get(g.id);if(!r){r={inst:Math.min(g.fault.instDown|0,this.gN(g)),detectUntil:0,deadPct:0,startUntil:0,wasStopped:this.gStopped(g),wasOff:false};this.grts.set(g.id,r)}return r}
- gN(g){return Math.max(1,g.cfg.instances|0)}
- gLive(g){return Math.max(0,this.gN(g)-(g.fault.instDown|0))}
- gStopped(g){const f=g.fault;return f.stopped==null?!!g.cfg.stopped:!!f.stopped}
- gOff(g){return!!g.fault.down||this.gStopped(g)||this.gLive(g)<=0||this.grt(g).startUntil>this.t}
- gW(g){if(this.gStopped(g)||this.grt(g).startUntil>this.t)return 0;const w=g.fault.weight==null?g.cfg.weight:g.fault.weight;return w>0?+w:0}
- off(n){if(n.fault['down'])return true;if(!n.group)return false;const g=this.ix().gm.get(n.group);return!!g&&this.gOff(g)}
- er(n){const a=n.fault.errorRate||0;if(!n.group)return a;const g=this.ix().gm.get(n.group),b=g?g.fault.errorRate||0:0;return b?100*(1-(1-a/100)*(1-b/100)):a}
- lm(n){const a=n.fault.latencyMult||1;if(!n.group)return a;const g=this.ix().gm.get(n.group);return g?a*(g.fault.latencyMult||1):a}
- wt(n){const g=n&&this.grp(n);return g?this.gW(g):100}
- cut(e){const a=this.node(e.from),b=this.node(e.to);if(!a||!b||a.group===b.group)return false;const ga=this.grp(a),gb=this.grp(b);return!!((ga&&ga.fault.partition)||(gb&&gb.fault.partition))}
+ /* ---------- apps: clusters (shards) → server groups (builds) → regions (instances) ----------
+    Below, "s" is a server group: the unit that has instances, a traffic share, a deployment state and faults. */
+ rep(n){return n.rep||(n.group?this.ix().rep1.get(n.id):undefined)}
+ si(s){return this.ix().sgm.get(s.id)}
+ sg(id){const i=this.ix().sgm.get(id);return i&&i.s}
+ reps(n){return this.ix().cl.get(n.id)||[n]}
+ acfg(s){const i=this.si(s);return i?i.g.cfg:GDEF}
+ grt(s){let r=this.grts.get(s.id);if(!r){r={inst:this.gDead(s),detectUntil:0,deadPct:0,startUntil:0,wasStopped:this.gStopped(s),wasOff:false};this.grts.set(s.id,r)}return r}
+ gN(s){let t=0;for(const x of s.regions)t+=Math.max(0,x.instances|0);return Math.max(1,t)}
+ gDead(s){let d=s.fault.instDown|0;for(const x of s.regions)if(x.fault.down)d+=Math.max(0,x.instances|0);return Math.max(0,Math.min(this.gN(s),d))}
+ gLive(s){return this.gN(s)-this.gDead(s)}
+ gStopped(s){const f=s.fault;return f.stopped==null?!!s.cfg.stopped:!!f.stopped}
+ gOff(s){const i=this.si(s);return!i||!!s.fault.down||!!i.g.fault.down||!!i.c.fault.down||this.gStopped(s)||this.gLive(s)<=0||this.grt(s).startUntil>this.t}
+ gW(s){if(this.gStopped(s)||this.grt(s).startUntil>this.t)return 0;const w=s.fault.weight==null?s.cfg.weight:s.fault.weight;return w>0?+w:0}
+ appLive(gid){const G=this.ix().gi.get(gid);let t=0;if(G)for(const i of G.reps)if(!this.gOff(i.s))t+=this.gLive(i.s);return t}
+ off(n){if(n.fault['down'])return true;if(!n.group)return false;const x=this.ix(),s=n.rep||x.rep1.get(n.id);if(s)return this.gOff(s);
+  const c=x.cl.get(n.id);if(c){for(const y of c)if(!this.gOff(y.rep))return false;return true}
+  const G=x.gi.get(n.group);if(!G)return false;for(const i of G.reps)if(!this.gOff(i.s))return false;return true}
+ er(n){const a=n.fault.errorRate||0,s=n.group&&this.rep(n),b=s?s.fault.errorRate||0:0;return b?100*(1-(1-a/100)*(1-b/100)):a}
+ lm(n){const a=n.fault.latencyMult||1,s=n.group&&this.rep(n);return s?a*(s.fault.latencyMult||1):a}
+ wt(n){if(!n||!n.group)return 100;const s=this.rep(n);if(s)return this.gW(s);const c=this.ix().cl.get(n.id);if(c){for(const y of c)if(this.gW(y.rep)>0)return 100;return 0}return 100}
+ cut(e){const a=this.node(e.from),b=this.node(e.to);if(!a||!b||a.group===b.group)return false;const gm=this.ix().gm,ga=a.group&&gm.get(a.group),gb=b.group&&gm.get(b.group);return!!((ga&&ga.fault.partition)||(gb&&gb.fault.partition))}
  pickW(outs,u){let tot=0;const ws=outs.map(o=>{const w=this.wt(this.node(o.to));tot+=w;return w});let x=u*tot;for(let i=0;i<outs.length;i++){x-=ws[i];if(x<0)return outs[i]}return outs[outs.length-1]}
  uneven(outs){const w0=this.wt(this.node(outs[0].to));for(let i=1;i<outs.length;i++)if(this.wt(this.node(outs[i].to))!==w0)return true;return false}
- members(g,kind){return this.m.nodes.filter(n=>n.group===g.id&&(!kind||KIND(n)===kind))}
- gl(g){return g.name+(g.cfg.version?" "+g.cfg.version:"")}
- syncGroups2(){for(const g of this.m.groups||[]){const gr=this.grt(g),N=this.gN(g),k=Math.min(Math.max(0,g.fault.instDown|0),N);
+ members(s,kind){return this.ix().run.filter(n=>this.rep(n)===s&&(!kind||KIND(n)===kind))}
+ gl(s){const i=this.si(s);if(!i)return s.name;const mc=i.g.clusters.length>1;return i.g.name+(mc?' '+i.c.name:'')+(mc||i.c.sgs.length>1?' · '+s.name:'')}
+ /* a request entering an app: the key picks the cluster (shard), the traffic split picks the server group */
+ route(n,msg){const x=this.ix(),L=x.cl.get(n.id);if(!L)return n;const g=x.gm.get(n.group),cs=g.clusters,key=msg.key==null?'':String(msg.key);
+  const c=cs[cs.length>1?hashStr('c'+key)%cs.length:0];let el=null,first=null,tot=0;
+  for(const y of L){if(y.clu!==c)continue;if(!first)first=y;const w=this.gW(y.rep);if(w>0){(el||(el=[])).push(y);tot+=w}}
+  let pick;if(!el)pick=first||L[0];else if(el.length===1)pick=el[0];
+  else{let v=(g.cfg.sticky?(hashStr('s'+key)%9973)/9973:this.rand())*tot;pick=el[el.length-1];for(const y of el){v-=this.gW(y.rep);if(v<0){pick=y;break}}}
+  this.tlog(msg.tr,'route',pick.id);return pick}
+ /* what the editor shows for a node: its own state, or the sum over its copies */
+ view(n){const cl=this.ix().cl.get(n.id);if(!cl)return this.rt(n);const rs=cl.map(c=>this.rt(c)),k=KIND(n);
+  const v={c:{},rate:{in:0,ok:0,err:0},p50:0,p99:0,busy:0,hist:[],q:{length:0},cl,rs,downUntil:Infinity,hl:{}};
+  let ob=0,ib=0,fly=0,keys=0,oh=null,ih=null,hl=0;for(const r of rs)if(r.hist.length>hl)hl=r.hist.length;for(let i=0;i<hl;i++)v.hist.push([0,0,0]);
+  for(const r of rs){for(const key in r.c)v.c[key]=(v.c[key]|0)+r.c[key];v.rate.in+=r.rate.in;v.rate.ok+=r.rate.ok;v.rate.err+=r.rate.err;
+   if(r.p50>v.p50)v.p50=r.p50;if(r.p99>v.p99)v.p99=r.p99;v.busy+=r.busy;v.q.length+=r.q.length;if(r.downUntil<v.downUntil)v.downUntil=r.downUntil;
+   for(let i=0,o=hl-r.hist.length;i<r.hist.length;i++){const a=v.hist[o+i],b=r.hist[i];a[0]+=b[0];a[1]+=b[1];a[2]+=b[2]}
+   if(k==='service'){ob+=r.outbox.length;ib+=r.inbox.length;fly+=r.ibFly;const a=r.outbox.peek(),b=r.inbox.peek();if(a&&(!oh||a.t<oh.t))oh=a;if(b&&(!ih||b.t<ih.t))ih=b;
+    if(r.obLast!=null&&!(v.obLast>r.obLast)){v.obLast=r.obLast;v.obLastN=r.obLastN}if(r.ibLastN)v.ibLastN=r.ibLastN}
+   if(r.map)keys+=r.map.size;if(r.hl)for(const id in r.hl)if(r.hl[id].until>this.t)v.hl[id]=r.hl[id]}
+  if(!(v.downUntil<Infinity))v.downUntil=0;
+  if(k==='service'){v.outbox={length:ob,peek:()=>oh};v.inbox={length:ib,peek:()=>ih};v.ibFly=fly}
+  if(k==='cache')v.map={size:keys};return v}
+ syncGroups2(){for(const i of this.ix().sgl){const g=i.s,cf=i.g.cfg,gr=this.grt(g),N=this.gN(g),k=this.gDead(g);
    if(k>gr.inst){const frac=(k-gr.inst)/Math.max(1,N-gr.inst);if(k<N)for(const n of this.members(g,'service'))this.crashPart(n,frac);
-    gr.detectUntil=this.t+(g.cfg.detectMs||0);gr.deadPct=100*k/N;this.log('crash',this.gl(g)+': '+(k-gr.inst)+' instance(s) died — '+(N-k)+' of '+N+' left'+(k<N&&g.cfg.detectMs>0?'; requests still routed to the dead one fail for '+g.cfg.detectMs+' ms':''))}
+    gr.detectUntil=this.t+(cf.detectMs||0);gr.deadPct=100*k/N;this.log('crash',this.gl(g)+': '+(k-gr.inst)+' instance(s) lost — '+(N-k)+' of '+N+' left'+(k<N&&cf.detectMs>0?'; requests still routed to the dead ones fail for '+cf.detectMs+' ms':''))}
    else if(k<gr.inst)this.log('ok',this.gl(g)+': instance(s) back — '+(N-k)+' of '+N+' running');
    gr.inst=k;
-   const st=this.gStopped(g);if(st!==gr.wasStopped){gr.wasStopped=st;if(st)this.log('fault',this.gl(g)+' stopped');else{gr.startUntil=this.t+(g.cfg.startMs||0);this.log('fault',this.gl(g)+' starting (ready in '+(g.cfg.startMs||0)+' ms)')}}
+   const st=this.gStopped(g);if(st!==gr.wasStopped){gr.wasStopped=st;if(st)this.log('fault',this.gl(g)+' stopped');else{gr.startUntil=this.t+(cf.startMs||0);this.log('fault',this.gl(g)+' starting (ready in '+(cf.startMs||0)+' ms)')}}
    const off=this.gOff(g);if(off!==gr.wasOff){gr.wasOff=off;if(!off)this.log('ok',this.gl(g)+' is up and serving')}}}
  crashPart(n,frac){const r=this.rt(n);let c=0;
   const kill=j=>{c++;j.dead=true;const tr=j.msg.tr;if(j.acked){this.lose(tr,'accepted work lost when an instance died',n.id);tr.pending--;this.check(tr)}else j.reply.abandon()};
@@ -380,29 +475,30 @@ class Sim{
   if(r.q.length){const keep=[];for(const j of r.q){if(this.rand()<frac)kill(j);else keep.push(j)}r.q=new Dq();for(const j of keep)r.q.push(j)}
   r.c.crash=(r.c.crash|0)+1;return c}
  killOne(g){g.fault.instDown=Math.min(this.gN(g),(g.fault.instDown|0)+1);this.syncFaults()}
- rolling(g){const N=this.gN(g),id=g.id;let i=0;this.log('fault',this.gl(g)+': rolling restart of '+N+' instance(s), one at a time');
-  const nxt=()=>{if(this.ix().gm.get(id)!==g)return;if(i++>=N)return this.log('ok',this.gl(g)+': rolling restart finished');
+ rolling(g){const N=this.gN(g),id=g.id,ms=this.acfg(g).startMs||0;let i=0;this.log('fault',this.gl(g)+': rolling restart of '+N+' instance(s), one at a time');
+  const nxt=()=>{if(this.sg(id)!==g)return;if(i++>=N)return this.log('ok',this.gl(g)+': rolling restart finished');
    g.fault.instDown=Math.min(N,(g.fault.instDown|0)+1);this.syncFaults();
-   this.at((g.cfg.startMs||0)+10,()=>{g.fault.instDown=Math.max(0,(g.fault.instDown|0)-1);this.syncFaults();this.at(400,nxt)})};nxt()}
- cancelCutover(){this.coTok++}
- /* deployment cut-over from one app group to another */
- cutover(toId,fromId,mode){const G=id=>this.ix().gm.get(id),to=G(toId),from=G(fromId);if(!to||!from||to===from)return;const tok=++this.coTok;
-  const live=()=>tok===this.coTok&&G(toId)===to&&G(fromId)===from,say=(lvl,m)=>{this.log(lvl,m);this.mark(m.split(':')[0])};
-  const ready=cb=>{if(this.gStopped(to)){to.fault.stopped=false;to.fault.weight=0;this.syncFaults();this.at((to.cfg.startMs||0)+20,()=>{if(live())cb()})}else cb()};
-  if(mode==='rollback'){for(const g of [to,from]){g.fault.weight=null;g.fault.stopped=null}say('ok','Rollback: '+this.gl(to)+' and '+this.gl(from)+' are back to their baseline traffic split');return this.syncFaults()}
-  if(mode==='bluegreen')ready(()=>{to.fault.weight=100;from.fault.weight=0;say('fault','Blue/green: all traffic switched '+this.gl(from)+' → '+this.gl(to)+' at once ('+this.gl(from)+' stays up for instant rollback)');this.syncFaults()});
-  else if(mode==='ab')ready(()=>{to.fault.weight=50;from.fault.weight=50;say('fault','A/B: traffic split 50/50 between '+this.gl(from)+' and '+this.gl(to)+' (use "Sticky by key" balancing to pin each user to one side)');this.syncFaults()});
-  else if(mode==='highlander'){from.fault.stopped=true;from.fault.weight=0;to.fault.weight=100;to.fault.stopped=true;this.syncFaults();
-   say('fault','Highlander: '+this.gl(from)+' stopped first; '+this.gl(to)+' starts now — nothing serves for '+(to.cfg.startMs||0)+' ms');
+   this.at(ms+10,()=>{g.fault.instDown=Math.max(0,(g.fault.instDown|0)-1);this.syncFaults();this.at(400,nxt)})};nxt()}
+ cancelCutover(){this.co.clear()}
+ /* deployment cut-over between two server groups of one cluster; the pair keeps the share of traffic it had between them */
+ cutover(toId,fromId,mode){const to=this.sg(toId),from=this.sg(fromId);if(!to||!from||to===from)return;const cid=this.si(to).c.id,tok={},cf=this.acfg(to);this.co.set(cid,tok);
+  const live=()=>this.co.get(cid)===tok&&this.sg(toId)===to&&this.sg(fromId)===from,say=(lvl,m)=>{this.log(lvl,m);this.mark(m.split(':')[0])};
+  const base=g=>this.gStopped(g)?0:(g.fault.weight==null?g.cfg.weight:g.fault.weight),tot=(base(to)+base(from))||100,share=p=>Math.round(tot*p)/100;
+  const ready=cb=>{if(this.gStopped(to)){to.fault.stopped=false;to.fault.weight=0;this.syncFaults();this.at((cf.startMs||0)+20,()=>{if(live())cb()})}else cb()};
+  if(mode==='rollback'){this.co.delete(cid);for(const g of [to,from]){g.fault.weight=null;g.fault.stopped=null}say('ok','Rollback: '+this.gl(to)+' and '+this.gl(from)+' are back to their baseline traffic split');return this.syncFaults()}
+  if(mode==='bluegreen')ready(()=>{to.fault.weight=tot;from.fault.weight=0;say('fault','Blue/green: all traffic switched '+this.gl(from)+' → '+this.gl(to)+' at once ('+from.name+' stays up for instant rollback)');this.syncFaults()});
+  else if(mode==='ab')ready(()=>{to.fault.weight=tot/2;from.fault.weight=tot/2;say('fault','A/B: traffic split evenly between '+this.gl(from)+' and '+this.gl(to));this.syncFaults()});
+  else if(mode==='highlander'){from.fault.stopped=true;from.fault.weight=0;to.fault.weight=tot;to.fault.stopped=true;this.syncFaults();
+   say('fault','Highlander: '+this.gl(from)+' stopped first; '+this.gl(to)+' starts now — nothing serves for '+(cf.startMs||0)+' ms');
    to.fault.stopped=false;this.syncFaults()}
-  else if(mode==='canary'){const steps=String(to.cfg.canarySteps||'5,25,50,100').split(/[\s,;]+/).map(Number).filter(x=>x>0&&x<=100),stepMs=Math.max(0.5,+to.cfg.canaryStepS||6)*1000,thr=+to.cfg.canaryRollback||0;
+  else if(mode==='canary'){const steps=String(cf.canarySteps||'5,25,50,100').split(/[\s,;]+/).map(Number).filter(x=>x>0&&x<=100),stepMs=Math.max(0.5,+cf.canaryStepS||6)*1000,thr=+cf.canaryRollback||0;
    if(!steps.length||steps[steps.length-1]!==100)steps.push(100);let i=0,snap=[0,0];
    const stats=()=>{let a=0,b=0;for(const n of this.members(to,'service')){const c=this.rt(n).c;a+=c.in;b+=c.err}return[a,b]};
    const step=()=>{if(!live())return;
     if(i>0){const s=stats(),din=s[0]-snap[0],de=s[1]-snap[1];
-     if(thr>0&&din>=5&&de/din*100>thr){to.fault.weight=0;from.fault.weight=100;this.syncFaults();return say('warn','Canary ROLLED BACK: '+this.gl(to)+' failed '+Math.round(de/din*100)+'% of its requests (limit '+thr+'%) — all traffic back on '+this.gl(from))}}
-    if(i>=steps.length)return say('ok','Canary complete: '+this.gl(to)+' now takes 100%');
-    const w=steps[i++];to.fault.weight=w;from.fault.weight=100-w;snap=stats();say('fault','Canary '+w+'%: '+this.gl(to)+' now receives '+w+'% of traffic');this.syncFaults();this.at(stepMs,step)};
+     if(thr>0&&din>=5&&de/din*100>thr){to.fault.weight=0;from.fault.weight=tot;this.syncFaults();return say('warn','Canary ROLLED BACK: '+this.gl(to)+' failed '+Math.round(de/din*100)+'% of its requests (limit '+thr+'%) — all traffic back on '+this.gl(from))}}
+    if(i>=steps.length)return say('ok','Canary complete: '+this.gl(to)+' now takes all of the traffic');
+    const w=steps[i++];to.fault.weight=share(w);from.fault.weight=tot-share(w);snap=stats();say('fault','Canary '+w+'%: '+this.gl(to)+' now receives '+w+'% of the traffic');this.syncFaults();this.at(stepMs,step)};
    ready(step)}}
 
  /* ---------- audit ---------- */
@@ -435,7 +531,7 @@ class Sim{
   if(this.chance(f.reset)){tr.pending--;this.tlog(tr,'reset',e.to);this.at(1,()=>once({ok:false,err:'reset',retry:true}));return}
   const m=this.chance(f.corrupt)?Object.assign({},msg,{bad:true}):msg;
   const lat=this.jit(c.latency,0.3)+(f.extraLatency||0);
-  const deliver=()=>{const dst=this.node(e.to);if(!dst||!this.edge(e.id)){tr.pending--;return this.check(tr)}
+  const deliver=()=>{let dst=this.node(e.to);if(!dst||!this.edge(e.id)){tr.pending--;return this.check(tr)}dst=this.route(dst,m);
    let fin=false;
    const reply=res=>{if(fin)return;fin=true;tr.pending--;
     if(e.fault.partition||this.chance(e.fault.respDrop)||this.cut(e)){s.drop++;this.vis(e.id,3);this.tlog(tr,'respdrop',e.to);return this.check(tr)}
@@ -460,7 +556,7 @@ class Sim{
   attempt()}
  recv(n,msg,reply,e){const r=this.rt(n),k=KIND(n);r.c.in++;
   if(this.off(n)||r.downUntil>this.t){r.c.err++;return this.at(1,()=>reply({ok:false,err:'down',retry:true}))}
-  if(n.group&&k==='service'){const g=this.grp(n),gr=g&&this.grt(g);if(gr&&gr.detectUntil>this.t&&this.chance(gr.deadPct)){r.c.err++;r.c.dead=(r.c.dead|0)+1;return this.at(1,()=>reply({ok:false,err:'down',retry:true}))}}
+  if(n.group&&k==='service'){const g=this.rep(n),gr=g&&this.grt(g);if(gr&&gr.detectUntil>this.t&&this.chance(gr.deadPct)){r.c.err++;r.c.dead=(r.c.dead|0)+1;return this.at(1,()=>reply({ok:false,err:'down',retry:true}))}}
   switch(k){
    case'service':return this.svcRecv(n,r,msg,reply,e);
    case'store':case'external':return this.serve(n,r,reply,()=>this.leafWork(n,r,msg,e));
@@ -487,16 +583,62 @@ class Sim{
   this.at(lat,run)}
  effect(n,r,msg,key){const tr=msg.tr,prev=tr.fx[key]|0;
   if(prev>0&&n.cfg.idempotent){this.A.dedup++;r.c.dedup=(r.c.dedup|0)+1;this.tlog(tr,'dedup',n.id);return false}
+  /* an ordered stream (topic, queue, work table) feeding this write: an older update landing after a newer one overwrites it */
+  if(msg.ord&&msg.seq!=null&&msg.key!=null){const ls=r.ls||(r.ls=new Map()),k2=key+'|'+(msg.os||'')+'|'+msg.key,l=ls.get(k2);if(l!==undefined&&l>msg.seq){r.c.ooo=(r.c.ooo|0)+1;tr.ooo=1;this.tlog(tr,'ooow',n.id)}else ls.set(k2,msg.seq)}
   tr.fx[key]=prev+1;r.c.w=(r.c.w|0)+1;if(!prev)r.c.u=(r.c.u|0)+1;else tr.dupK=key;if(msg.bad&&!MSGK[KIND(n)])tr.corrupt=1;
   if(msg.key!=null)this.lastWrite.set(msg.key,this.t);
   this.tlog(tr,prev?'dupfx':'fx',n.id);return true}
- leafWork(n,r,msg,e){const op=msg.op,tr=msg.tr,key=msg.act||('e:'+e.id);
+ leafWork(n,r,msg,e){const op=msg.op,tr=msg.tr,key=msg.act||('e:'+TID(e)),T=tableOf(n,e.cfg.table);
   if(op==='read'){if(n.cfg.replicaLag>0&&msg.key!=null){const w=this.lastWrite.get(msg.key);if(w!==undefined&&w>this.t-n.cfg.replicaLag){tr.stale=1;r.c.stale=(r.c.stale|0)+1}}return{ok:true}}
-  if(op==='prepare')return{ok:true};
-  if(op==='undo'){if(tr.fx[key]>0){tr.fx[key]--;r.c.undo=(r.c.undo|0)+1;this.tlog(tr,'undo',n.id)}return{ok:true}}
-  if(op==='commit'){for(const k of msg.keys)this.effect(n,r,msg,k);
+  if(op==='prepare')return T&&T.kind==='dedupe'&&tr.dd&&tr.dd[n.id+'|'+T.id+'|'+key]?this.ddHit(n,r,tr):{ok:true};
+  if(op==='undo'){if(tr.fx[key]>0){tr.fx[key]--;r.c.undo=(r.c.undo|0)+1;this.tlog(tr,'undo',n.id)}if(T&&T.kind==='dedupe'&&tr.dd)delete tr.dd[n.id+'|'+T.id+'|'+key];return{ok:true}}
+  if(op==='commit'){const ks=msg.keys,tbs=msg.tbs||[];
+   /* a de-dupe row that already exists is a unique-key violation: the whole transaction rolls back and the consumer skips the message */
+   for(let i=0;i<ks.length;i++){const t=tableOf(n,tbs[i]);if(t&&t.kind==='dedupe'&&tr.dd&&tr.dd[n.id+'|'+t.id+'|'+ks[i]])return this.ddHit(n,r,tr)}
+   for(let i=0;i<ks.length;i++)this.put(n,r,msg,ks[i],tableOf(n,tbs[i]));
    if(msg.ob){const s=this.node(msg.svc);if(s)for(const o of msg.ob)this.obPush(s,o,n.id)}return{ok:true}}
-  this.effect(n,r,msg,key);return{ok:true}}
+  return this.put(n,r,msg,key,T)}
+
+ /* ---------- database tables: connection points on a store. A work table (inbox / outbox) holds rows until a polling loop reads them ---------- */
+ tb(r,id){const m=r.tb||(r.tb={});return m[id]||(m[id]={rows:new Dq(),fly:0,ks:{},n:0,done:0,park:0,pe:{}})}
+ ddHit(n,r,tr){r.c.dedup=(r.c.dedup|0)+1;this.A.dedup++;this.tlog(tr,'ddhit',n.id);return{ok:true,dup:true}}
+ put(n,r,msg,key,T){const tr=msg.tr;
+  /* de-dupe table: unique key on (consumer, message). A second insert for the same message is a unique-key hit and the consumer skips it. */
+  if(T&&T.kind==='dedupe'){const dk=n.id+'|'+T.id+'|'+key,dd=tr.dd||(tr.dd={});if(dd[dk])return this.ddHit(n,r,tr);dd[dk]=1;tr.fx[key]=1;this.tb(r,T.id).n++;this.tlog(tr,'ddrow',n.id,T.name);return{ok:true,dd:true}}
+  if(this.effect(n,r,msg,key)&&T){if(T.kind==='queue')this.rowPush(n,r,T,msg);else this.tb(r,T.id).n++}
+  return{ok:true}}
+ rowPush(n,r,T,msg){const tb=this.tb(r,T.id),pe=this.outs(n.id).filter(e=>e.cfg.poll&&e.cfg.table===T.id);tb.n++;if(!pe.length)return;
+  const tr=msg.tr;tr.pending++;tb.rows.push({tr,key:msg.key,seq:(tb.ks[msg.key]=(tb.ks[msg.key]|0)+1),bad:msg.bad,n:0,t:this.t});this.tlog(tr,'row',n.id,T.name);
+  for(const e of pe)this.tbKick(n,r,tb,e)}
+ tbKick(n,r,tb,e){const st=tb.pe[e.id]||(tb.pe[e.id]={T:false,busy:false,hold:0,last:null,lastN:0});if(st.T)return;const p=Math.max(10,(e.cfg.poll||POLLD).everyMs||200);
+  /* several loops on one table (copies of a poller, or different pollers) do not tick in lock-step, so they share the rows */
+  let n2=0;for(const k in tb.pe)n2++;st.T=true;this.at(p-(this.t%p)+(n2>1?this.rand()*p*0.5:0),()=>{st.T=false;this.tbPoll(n,r,tb,e,st)})}
+ tbPoll(n,r,tb,e,st){if(!this.edge(e.id)||!tb.rows.length)return;const c=this.node(e.to),p=e.cfg.poll||POLLD;
+  if(st.busy||this.t<st.hold||this.off(n)||!c||!this.isUp(c)||this.wt(c)<=0)return this.tbKick(n,r,tb,e);
+  const B=Math.max(1,p.batch|0),rows=[];while(rows.length<B&&tb.rows.length)rows.push(tb.rows.shift());
+  st.busy=true;tb.fly+=rows.length;st.last=this.t;st.lastN=rows.length;r.c.polls=(r.c.polls|0)+1;
+  const each=p.mark!=='batch',res=rows.map(()=>0);/* 0 untouched · 1 handled · 2 failed, keep · 3 gone (parked or rejected) */
+  const settle=row=>{row.tr.pending--;this.check(row.tr)};
+  const finish=()=>{const bad=res.some(x=>x===0||x===2),dbUp=!this.off(n),back=[];
+   rows.forEach((row,i)=>{const s=res[i];if(s===3)return settle(row);
+    /* marking a row as done is itself a write: with the database down, or with per-batch marking after a failure, handled rows are read again */
+    if(s===1&&dbUp&&(each||!bad)){tb.done++;return settle(row)}
+    if(s===1){r.c.reread=(r.c.reread|0)+1;this.tlog(row.tr,'reread',n.id)}back.push(row)});
+   tb.fly-=rows.length;for(let i=back.length-1;i>=0;i--)tb.rows.unshift(back[i]);st.busy=false;if(bad)st.hold=this.t+(p.backoff||0);if(tb.rows.length)this.tbKick(n,r,tb,e)};
+  const one=(i,cb)=>{const row=rows[i],tr=row.tr;let done=false;
+   const fin=x=>{if(done)return;done=true;
+    if(x.ok)res[i]=1;
+    else if(x.retry===false)res[i]=3;
+    else{const free=x.err==='down'||x.err==='overload'||x.err==='throttled';if(!free)row.n++;
+     if(!free&&p.onExhaust!=='block'&&row.n>=(p.maxAttempts||5)){res[i]=3;tr.parked=1;tb.park++;this.tlog(tr,'rowpark',n.id)}else{res[i]=2;this.tlog(tr,'rowretry',e.to,x.cause||x.err)}}
+    cb(!!x.ok)};
+   this.send(e,{tr,key:row.key,seq:row.seq,bad:row.bad,act:null,op:'write',ord:true},fin);
+   this.at(p.timeout||5000,()=>{if(!done){this.tlog(tr,'ptimeout',e.to);fin({ok:false,err:'timeout',retry:true})}})};
+  if(p.send==='parallel'){let left=rows.length;for(let i=0;i<rows.length;i++)one(i,()=>{if(--left===0)finish()})}
+  else if(p.send==='seq'){let i=0;const next=()=>{if(i>=rows.length)return finish();one(i++,ok=>ok?next():finish())};next()}
+  /* keyed: rows for different keys run side by side, rows for the same key strictly one after another */
+  else{const ch=new Map();rows.forEach((row,i)=>{const a=ch.get(row.key);if(a)a.push(i);else ch.set(row.key,[i])});let left=ch.size;
+   for(const a of ch.values()){let j=0;const next=()=>{if(j>=a.length){if(--left===0)finish();return}one(a[j++],ok=>{if(ok)next();else if(--left===0)finish()})};next()}}}
 
  /* ---------- services ---------- */
  svcRecv(n,r,msg,reply,e){const cfg=n.cfg;
@@ -506,10 +648,11 @@ class Sim{
   const job={msg,reply,e,t0:this.t,acked:false};
   if(cfg.respond==='ack'){msg.tr.pending++;job.acked=true;reply({ok:true,accepted:true})}
   r.q.push(job);this.pump(n,r)}
- workers(n){const g=this.grp(n),inst=g?Math.max(1,this.gLive(g)):1;return Math.max(1,Math.round(n.cfg.concurrency*inst*(n.fault.capacityPct==null?100:n.fault.capacityPct)/100))}
+ workers(n){const cl=n.tid?null:this.ix().cl.get(n.id);if(cl){let t=0;for(const c of cl)t+=this.workers(c);return t}
+  const g=n.group&&this.rep(n),inst=g?Math.max(1,this.gLive(g)):1;return Math.max(1,Math.round(n.cfg.concurrency*inst*(n.fault.capacityPct==null?100:n.fault.capacityPct)/100))}
  /* ---------- inbox: store the message durably, acknowledge, process later in polled batches ---------- */
  inboxDb(n){for(const e of this.outs(n.id)){const d=this.node(e.to);if(d&&KIND(d)==='store')return d}return null}
- inboxRecv(n,r,msg,reply,e){const tr=msg.tr,cfg=n.cfg,id=n.id+'|'+(msg.act||('e:'+e.id)),db=this.inboxDb(n);
+ inboxRecv(n,r,msg,reply,e){const tr=msg.tr,cfg=n.cfg,id=TID(n)+'|'+(msg.act||('e:'+TID(e))),db=this.inboxDb(n);
   if(db&&this.off(db)){r.c.err++;return this.at(1,()=>reply({ok:false,err:'down',retry:true}))}
   const ib=tr.ib||(tr.ib={});
   if(ib[id]){this.A.dedup++;r.c.dedup=(r.c.dedup|0)+1;this.tlog(tr,'dedup',n.id);return this.at(1,()=>reply({ok:true,dedup:true}))}
@@ -544,22 +687,23 @@ class Sim{
   else{const ms=n.cfg.restartMs||3000;r.downUntil=this.t+ms;this.at(ms+1,()=>{this.log('ok',n.name+' restarted');this.pump(n,r)});this.log('crash',n.name+' crashed ('+jobs.length+' in-flight requests lost) — restarting in '+ms+' ms')}
   /* the outbox relay runs inside the service: publishes that were in flight are not marked as sent and go out again */
   r.obEp++;r.relaying=false;this.obPurge(r);if(r.outbox.length)this.obKick(n,r,true)}
- handle(n,r,job,ep){const msg=job.msg,tr=msg.tr,cfg=n.cfg,key=msg.act||('e:'+job.e.id);
+ handle(n,r,job,ep){const msg=job.msg,tr=msg.tr,cfg=n.cfg,nid=TID(n),key=msg.act||('e:'+TID(job.e));
   const end=res=>this.jobEnd(n,r,job,res);
-  tr.sv[n.id]=1;
-  if(msg.op==='undo'){for(const a of cfg.actions){const k=n.id+':'+a.id;if(tr.fx[k]>0)tr.fx[k]--}if(tr.fx[key]>0)tr.fx[key]--;this.tlog(tr,'undo',n.id);return end({ok:true})}
+  tr.sv[nid]=1;
+  if(msg.op==='undo'){for(const a of cfg.actions){const k=nid+':'+a.id;if(tr.fx[k]>0)tr.fx[k]--}if(tr.fx[key]>0)tr.fx[key]--;this.tlog(tr,'undo',n.id);return end({ok:true})}
   if(msg.bad){if(cfg.badData==='reject'){tr.rejected=1;this.tlog(tr,'reject',n.id);return end({ok:false,err:'bad',retry:false})}
    if(cfg.badData==='crash'){this.tlog(tr,'poison',n.id);return end({ok:false,err:'poison',retry:true})}}
   /* inbox + DB transaction: the row is marked processed in the same commit as the writes, so a re-run after a late failure is a no-op */
-  if(job.ib&&tr.ibd&&tr.ibd[n.id+'|'+key]){this.A.dedup++;r.c.dedup=(r.c.dedup|0)+1;this.tlog(tr,'dedup',n.id);return end({ok:true,dedup:true})}
+  if(job.ib&&tr.ibd&&tr.ibd[nid+'|'+key]){this.A.dedup++;r.c.dedup=(r.c.dedup|0)+1;this.tlog(tr,'dedup',n.id);return end({ok:true,dedup:true})}
   if(cfg.idempotent&&tr.fx[key]>0){this.A.dedup++;r.c.dedup=(r.c.dedup|0)+1;this.tlog(tr,'dedup',n.id);return end({ok:true,dedup:true})}
   if(msg.ord){const k2=job.e.id+'|'+msg.key,l=r.lastSeq.get(k2);if(l!==undefined&&l>msg.seq){r.c.ooo=(r.c.ooo|0)+1;tr.ooo=1;this.tlog(tr,'ooo',n.id)}else r.lastSeq.set(k2,msg.seq)}
   const acts=cfg.actions,N=acts.length;let failAt=-1;
   if(r.once>0||this.chance(this.er(n))){if(r.once>0)r.once--;failAt=Math.floor(this.rand()*(N+2))}
-  const ctx={i:0,tx:[],ob:[],done:[],deg:false,pf:false};
-  const fail=res=>{this.tlog(tr,'hfail',n.id,res.err);end(res)};
+  const ctx={i:0,tx:[],ob:[],done:[],deg:false,pf:false,dd:false};
+  const fail=res=>{if(ctx.dd)this.lose(tr,'its de-dupe row was committed but the work then failed: every redelivery is now skipped as a duplicate',n.id);this.tlog(tr,'hfail',n.id,res.err);end(res)};
+  const skip=()=>{this.tlog(tr,'ddskip',n.id);end({ok:true,dedup:true})};
   const onRes=(a,e,m,res)=>{
-   if(res.ok){ctx.pf=false;if(m.op==='prepare')ctx.tx.push({e,k:m.act});else if(m.op!=='read')ctx.done.push({e,m,a});return step()}
+   if(res.ok){if(res.dup)return skip();ctx.pf=false;if(m.op==='prepare')ctx.tx.push({e,k:m.act});else if(m.op!=='read'){ctx.done.push({e,m,a});if(res.dd)ctx.dd=true}return step()}
    r.c.aerr=(r.c.aerr|0)+1;this.tlog(tr,'afail',e.to,res.err);
    if(a.onError==='continue'){ctx.deg=true;ctx.pf=true;return step()}
    const up={ok:false,err:res.err==='bad'?'bad':'error',retry:res.retry!==false,cause:res.err};
@@ -572,10 +716,10 @@ class Sim{
   const step=()=>{if((r.epoch!==ep||job.dead))return;
    if(ctx.i===failAt)return fail({ok:false,err:'error',retry:true});
    if(ctx.i>=N)return commit();
-   const a=acts[ctx.i++],e=this.edge(a.edge);if(!e)return step();
+   const a=acts[ctx.i++],e=this.edge(n.tid?a.edge+'@'+n.rep.id:a.edge);if(!e)return step();
    if(a.when==='fallback'&&!ctx.pf)return step();
    const dst=this.node(e.to),dk=KIND(dst);
-   const m={tr,key:msg.key,seq:msg.seq,bad:msg.bad,act:n.id+':'+a.id,op:a.op||'write'};
+   const m={tr,key:msg.key,seq:msg.seq,bad:msg.bad,act:nid+':'+a.id,op:a.op||'write',ord:msg.ord,os:msg.ord?(msg.os||TID(job.e)):undefined};
    if(r.actOnce[a.id]||this.chance(a.failPct)){r.actOnce[a.id]=0;return onRes(a,e,m,{ok:false,err:'error',retry:true})}
    const o={timeout:a.timeout,retries:a.retries,backoff:a.backoff,brk:a.breaker?(r.brk[a.id]||(r.brk[a.id]={f:0,until:0,name:n.name+' → '+dst.name})):null};
    if(a.await===false){this.call(e,m,o,res=>{if(!res.ok)this.lose(tr,'fire-and-forget call failed',e.to)});ctx.pf=false;return step()}
@@ -588,13 +732,13 @@ class Sim{
     if(msg.op!=='read'){const p=tr.fx[key]|0;tr.fx[key]=p+1;if(p>0&&!acts.some(a=>a.op!=='read')){tr.dupK=key;this.tlog(tr,'duphandle',n.id)}}
     this.tlog(tr,'done',n.id);end({ok:true,deg:ctx.deg})};
    if(!ctx.tx.length&&!ctx.ob.length)return fin();
-   const groups=new Map();for(const x of ctx.tx){let g=groups.get(x.e.to);if(!g)groups.set(x.e.to,g={e:x.e,keys:[]});g.keys.push(x.k)}
+   const groups=new Map();for(const x of ctx.tx){let g=groups.get(x.e.to);if(!g)groups.set(x.e.to,g={e:x.e,keys:[],tbs:[]});g.keys.push(x.k);g.tbs.push(x.e.cfg.table||'')}
    let gl=[...groups.values()];const ob=ctx.ob.length?ctx.ob:null;
    if(ob&&!gl.length){const se=this.outs(n.id).find(x=>KIND(this.node(x.to))==='store');
-    if(!se){for(const o of ob)this.obPush(n,o,null);return fin()}gl=[{e:se,keys:[]}]}
-   let gi=0;const next=()=>{if((r.epoch!==ep||job.dead))return;if(gi>=gl.length){if(job.ib)(tr.ibd||(tr.ibd={}))[n.id+'|'+key]=1;return fin()}const g=gl[gi++];
-    const cm={tr,key:msg.key,bad:msg.bad,op:'commit',keys:g.keys,act:null,ob:gi===1?ob:null,svc:n.id};
-    this.call(g.e,cm,{timeout:1000,retries:0,backoff:0},res=>{if((r.epoch!==ep||job.dead))return;if(!res.ok){this.tlog(tr,'rollback',g.e.to,res.err);return fail({ok:false,err:'error',retry:true,cause:res.err})}next()})};
+    if(!se){for(const o of ob)this.obPush(n,o,null);return fin()}gl=[{e:se,keys:[],tbs:[]}]}
+   let gi=0;const next=()=>{if((r.epoch!==ep||job.dead))return;if(gi>=gl.length){if(job.ib)(tr.ibd||(tr.ibd={}))[nid+'|'+key]=1;return fin()}const g=gl[gi++];
+    const cm={tr,key:msg.key,seq:msg.seq,bad:msg.bad,op:'commit',keys:g.keys,tbs:g.tbs,act:null,ob:gi===1?ob:null,svc:n.id,ord:msg.ord,os:msg.ord?(msg.os||TID(job.e)):undefined};
+    this.call(g.e,cm,{timeout:1000,retries:0,backoff:0},res=>{if((r.epoch!==ep||job.dead))return;if(!res.ok){this.tlog(tr,'rollback',g.e.to,res.err);return fail({ok:false,err:'error',retry:true,cause:res.err})}if(res.dup)return skip();next()})};
    next()};
   step()}
  jobEnd(n,r,job,res){r.busy--;r.inflight.delete(job);const tr=job.msg.tr;
@@ -624,7 +768,7 @@ class Sim{
   else{let i=0;const next=()=>{if(i>=rows.length)return finish();pub(rows[i++],ok=>{if(!ok){failed=true;return finish()}next()})};next()}}
 
  /* ---------- log (Kafka-style) ---------- */
- logWork(n,r,msg,e){const key=msg.act||('e:'+e.id),tr=msg.tr;
+ logWork(n,r,msg,e){const key=msg.act||('e:'+TID(e)),tr=msg.tr;
   if(!this.effect(n,r,msg,key))return{ok:true};
   this.syncGroups(n,r);const p=msg.key==null?0:hashStr(String(msg.key))%r.parts.length,P=r.parts[p];
   P.log.push({tr,key:msg.key,seq:(r.ks[msg.key]=(r.ks[msg.key]|0)+1),bad:msg.bad});tr.pending+=r.groups.size;
@@ -632,7 +776,7 @@ class Sim{
  /* subscriptions that share a "consumer group id" are one group: they share offsets and split the partitions */
  syncGroups(n,r){const outs=this.outs(n.id);let stale=false;
   for(const g of r.groups.values())g.es.length=0;
-  for(const e of outs){const key=e.cfg.sub&&e.cfg.sub.group?'g:'+e.cfg.sub.group:e.id;let g=r.groups.get(key);
+  for(const e of outs){const c=this.node(e.to),s=c&&c.rep,key=(e.cfg.sub&&e.cfg.sub.group?'g:'+e.cfg.sub.group:TID(e))+(s&&s.cfg.consume==='own'?'@'+s.id:'');let g=r.groups.get(key);
    if(!g){g={key,es:[],off:r.parts.map(P=>P.base+P.log.length),busy:r.parts.map(()=>0),epoch:0,dlq:0,dead:false};r.groups.set(key,g)}g.es.push(e)}
   for(const g of r.groups.values())if(!g.es.length)stale=true;
   if(stale)for(const [id,g] of [...r.groups])if(!g.es.length){this.dropGroup(r,g);r.groups.delete(id)}}
@@ -680,7 +824,7 @@ class Sim{
   this.at(2000,()=>{for(const [g,b] of snap)for(let p=0;p<b.length;p++)if(b[p]&&g.busy[p]===b[p])g.busy[p]=0;this.pumpLog(n,r)})}
 
  /* ---------- queue (SQS / RabbitMQ-style) ---------- */
- queueWork(n,r,msg,e){const key=msg.act||('e:'+e.id),tr=msg.tr;
+ queueWork(n,r,msg,e){const key=msg.act||('e:'+TID(e)),tr=msg.tr;
   if(r.ready.length+r.infl>=(n.cfg.capacity||1e9)){r.c.rej=(r.c.rej|0)+1;return{ok:false,err:'overload',retry:true}}
   if(!this.effect(n,r,msg,key))return{ok:true};
   r.ready.push({tr,key:msg.key,seq:(r.ks[msg.key]=(r.ks[msg.key]|0)+1),bad:msg.bad,n:0});tr.pending++;this.pumpQ(n,r);return{ok:true}}
@@ -711,7 +855,7 @@ class Sim{
  pubRecv(n,r,msg,reply,e){this.at(this.jit(n.cfg.latency,0.3),()=>{
   if(this.off(n)||this.chance(this.er(n))){r.c.err++;return reply({ok:false,err:this.off(n)?'down':'error',retry:true})}
   r.c.ok++;const tr=msg.tr;
-  if(this.effect(n,r,msg,msg.act||('e:'+e.id)))for(const o of this.outs(n.id))
+  if(this.effect(n,r,msg,msg.act||('e:'+TID(e))))for(const o of this.outs(n.id))
    this.call(o,{tr,key:msg.key,seq:msg.seq,bad:msg.bad,act:null,op:'write'},{timeout:n.cfg.timeout||2000,retries:n.cfg.retries|0,backoff:200},res=>{
     if(!res.ok&&res.err!=='bad'){r.c.undeliv=(r.c.undeliv|0)+1;this.lose(tr,'pub/sub delivery failed — no retention to retry from',o.to)}});
   reply({ok:true})})}
@@ -719,7 +863,7 @@ class Sim{
   if(cfg.rateLimit>0&&!this.bucket(r,cfg.rateLimit)){r.c.err++;r.c.thr=(r.c.thr|0)+1;return this.at(1,()=>reply({ok:false,err:'throttled',retry:true}))}
   if(this.chance(this.er(n))){r.c.err++;return this.at(1,()=>reply({ok:false,err:'error',retry:true}))}
   if(cfg.hitRatio>0&&msg.op==='read'&&this.chance(cfg.hitRatio)){r.c.ok++;r.c.hit=(r.c.hit|0)+1;return this.at(this.jit(cfg.latency,0.3),()=>reply({ok:true,cached:true}))}
-  const m=msg.act?msg:Object.assign({},msg,{act:'e:'+e.id}),t0=this.t,seen=new Set();let tried=0;
+  const m=msg.act?msg:Object.assign({},msg,{act:'e:'+TID(e)}),t0=this.t,seen=new Set();let tried=0;
   const go=()=>{const outs=this.outs(n.id).filter(o=>!seen.has(o.id)&&!(cfg.healthEject&&r.hl[o.id]&&r.hl[o.id].until>this.t)&&this.wt(this.node(o.to))>0);
    if(!outs.length){r.c.err++;return reply({ok:false,err:tried?'error':'no-upstream',retry:true})}
    let o;if(cfg.strategy==='sticky')o=this.pickW(outs,(hashStr('s'+msg.key)%9973)/9973);
@@ -745,7 +889,7 @@ class Sim{
    return this.call(down,msg,{timeout:cfg.timeout||1000,retries:0,backoff:0},res=>{if(res.ok){this.cset(n,r,k);r.c.ok++}else r.c.err++;reply(res)})}
   if(cfg.onWrite==='invalidate')r.map.delete(k);else this.cset(n,r,k);
   if(down&&cfg.writeThrough)return this.call(down,msg,{timeout:cfg.timeout||1000,retries:0,backoff:0},res=>{if(res.ok)r.c.ok++;else r.c.err++;reply(res)});
-  if(msg.op==='write')this.effect(n,r,msg,msg.act||('e:'+e.id));
+  if(msg.op==='write')this.effect(n,r,msg,msg.act||('e:'+TID(e)));
   r.c.ok++;reply({ok:true})})}
 
  /* ---------- producers ---------- */
@@ -762,7 +906,7 @@ class Sim{
  fire(n,r,count){count=Math.min(20000,Math.max(0,Math.round(count*(n.fault.surge||1))));const sp=+n.cfg.spreadMs||0;r.c.fires=(r.c.fires|0)+1;r.lastCount=count;
   if(!count)return;this.log('info',n.name+' released a batch of '+count+(sp>0?' spread over '+sp+' ms':' at once'));
   for(let i=0;i<count;i++){if(sp>0)this.at(this.rand()*sp,()=>{if(this.node(n.id)===n)this.emit(n,r)});else this.emit(n,r)}}
- fireNow(n){const r=this.rt(n),g=this.grp(n);r.last=this.t;this.fire(n,r,this.relCount(n,r)*(n.cfg.perInstance&&g?this.gLive(g):1))}
+ fireNow(n){const r=this.rt(n);r.last=this.t;this.fire(n,r,this.relCount(n,r)*(n.cfg.perInstance&&n.group?Math.max(1,this.appLive(n.group)):1))}
  nextFire(n,r){return Math.max(0,(r.last==null?this.t:r.last)+Math.max(0.1,+n.cfg.everyS||10)*1000-this.t)}
  emitOne(n){return this.emit(n,this.rt(n))}
  pLoop(n,r){if(n.cfg.mode==='schedule'){if(r.last==null)r.last=this.t;
@@ -788,16 +932,20 @@ class Sim{
  burst(n,count){const r=this.rt(n);for(let i=0;i<count;i++)this.emit(n,r)}
 
  /* ---------- housekeeping ---------- */
- syncFaults(){this.syncGroups2();for(const n of this.m.nodes){const k=KIND(n),r=this.rt(n);
-  if(k==='service'){if(this.off(n)&&!r.wasDown){r.wasDown=true;this.crash(n,true)}else if(!this.off(n)&&r.wasDown){r.wasDown=false;if(!n.group||n.fault['down']===false&&!this.grp(n))this.log('ok',n.name+' is back up')}this.pump(n,r)}
+ syncFaults(){this.syncGroups2();for(const n of this.ix().run){const k=KIND(n),r=this.rt(n);
+  if(k==='service'){if(this.off(n)&&!r.wasDown){r.wasDown=true;this.crash(n,true)}else if(!this.off(n)&&r.wasDown){r.wasDown=false;if(!n.group)this.log('ok',n.name+' is back up')}this.pump(n,r)}
   else if(k==='log'){this.syncGroups(n,r);this.pumpLog(n,r)}
-  else if(k==='queue')this.pumpQ(n,r)}}
- forget(n){const r=this.rts.get(n.id);if(!r)return;const k=KIND(n);
+  else if(k==='queue')this.pumpQ(n,r)
+  else if(k==='store'&&r.tb)for(const tid in r.tb){const tb=r.tb[tid];if(!tb.rows.length)continue;const pe=this.outs(n.id).filter(e=>e.cfg.poll&&e.cfg.table===tid);
+   if(!pe.length){for(const x of tb.rows){x.tr.pending--;this.check(x.tr)}tb.rows.clear()}else for(const e of pe)this.tbKick(n,r,tb,e)}}}
+ forget(n){for(const x of this.reps(n))this.forget1(x)}
+ forget1(n){const r=this.rts.get(n.id);if(!r)return;const k=KIND(n);
   if(k==='service'){this.crash(n,true);for(const o of r.outbox){o.m.tr.pending--;this.check(o.m.tr)}r.outbox.clear();for(const x of r.inbox){x.msg.tr.pending--;this.check(x.msg.tr)}r.inbox.clear()}
   else if(k==='queue'){for(const x of r.ready){x.tr.pending--;this.check(x.tr)}r.ready.clear()}
-  else if(k==='log'){for(const g of r.groups.values())this.dropGroup(r,g);r.groups.clear()}}
+  else if(k==='log'){for(const g of r.groups.values())this.dropGroup(r,g);r.groups.clear()}
+  else if(k==='store'&&r.tb)for(const tid in r.tb){const tb=r.tb[tid];for(const x of tb.rows){x.tr.pending--;this.check(x.tr)}tb.rows.clear()}}
  tick(){this.ensureProducers();this.syncFaults();
-  for(const n of this.m.nodes){const r=this.rt(n),c=r.c,s=r.snap;s.push([c.in,c.ok,c.err]);if(s.length>3)s.shift();
+  for(const n of this.ix().run){const r=this.rt(n),c=r.c,s=r.snap;s.push([c.in,c.ok,c.err]);if(s.length>3)s.shift();
    const a=s[0],dt=(s.length-1)*0.5||0.5;r.rate.in=(c.in-a[0])/dt;r.rate.ok=(c.ok-a[1])/dt;r.rate.err=(c.err-a[2])/dt;
    if(r.lat.length){r.lat.sort((x,y)=>x-y);r.p50=r.lat[r.lat.length>>1];r.p99=r.lat[Math.min(r.lat.length-1,Math.floor(r.lat.length*0.99))];r.lat=[]}
    r.hist.push([r.rate.in,r.rate.ok,r.rate.err]);if(r.hist.length>240)r.hist.shift()}
@@ -807,7 +955,7 @@ class Sim{
   G.hist.push({t:this.t,ok:(G.ok-g0[0])/gdt,err:(G.err-g0[1])/gdt,an:(A.anom-g0[2])/gdt,p50,p99,infl:A.created-A.done});if(G.hist.length>600)G.hist.shift();
   this.at(500,()=>this.tick())}
 }
-if(typeof module!=='undefined')module.exports={Sim,TYPES,KDEF,FDEF,EFDEF,GDEF,GFDEF,SUBD,ACTD,KIND,newModel,addNode,addEdge,removeEdge,removeNode,addGroup,removeGroup,regroup,canConnect,normalize,clone,AFLAGS};
+if(typeof module!=='undefined')module.exports={Sim,TYPES,KDEF,FDEF,EFDEF,GDEF,GFDEF,CFDEF,SFDEF,RFDEF,SUBD,ACTD,KIND,newModel,addNode,addEdge,removeEdge,removeNode,addGroup,removeGroup,regroup,canConnect,normalize,clone,AFLAGS};
 </script>
 <script id="examples">
 'use strict';
@@ -820,7 +968,9 @@ function ex(name,tag,blurb,desc,fn){EXAMPLES.push({name,tag,blurb,build(){const 
  const B={n:(type,nm,x,y,cfg)=>addNode(m,type,x,y,nm,cfg).id,
   e:(a,b,o)=>addEdge(m,a,b,o).id,
   note:(t,x,y)=>addNode(m,'note',x,y,t).id,
-  g:(nm,x,y,w,hh,cfg)=>addGroup(m,x,y,w,hh,nm,cfg).id,
+  app:(nm,x,y,w,hh,o)=>addGroup(m,x,y,w,hh,nm,o),
+  t:(db,nm,kind)=>addTable(m,m.nodes.find(n=>n.id===db),nm,kind).id,
+  id:{edge:(a,b)=>m.edges.find(e=>e.from===a&&e.to===b).id},
   sc:(nm,d,faults,o)=>{m.scenarios.push(Object.assign({id:'s'+(m.seq++),name:nm,desc:d,faults:faults||{},heal:0,triggers:[]},o||{}))}};
  fn(B);regroup(m);return m}})}
 
@@ -1171,29 +1321,119 @@ C spreads the same batch over 10 s. The API never sees more than about 150 req/s
  B.sc('Database slow ×6 (20 s)','The store behind each importer slows down.',{[da]:{latencyMult:6},[db]:{latencyMult:6},[dc]:{latencyMult:6}},{heal:20});
 });
 
-ex('Deployments: canary vs. blue/green vs. highlander','Operations','Three ways to cut traffic over to a new build, and what each does when the build is bad or a host dies.',
-`Each dashed box is an app group: one deployed build with 3 instances. v1 serves all traffic; v2 is the new build. Select a box to see its instances, traffic share, faults and the cut-over buttons.
+ex('Deployments: canary vs. blue/green vs. highlander','Operations','Three ways to cut traffic over to a new build, and what each does when the build is bad or a data centre dies.',
+`Each dashed box is one application. The strip under its title shows its server groups: v1 (the build serving now) and v2 (the new build), each with instances in two regions. Select a box to edit the hierarchy, the traffic split (always 100% in total) and to run a cut-over.
 
 A · Canary. v2 gets 5% → 25% → 50% → 100% of traffic. After each step its own error rate is checked and everything rolls back above 10%.
 
 B · Blue/green. v2 runs alongside v1 at 0%. The switch is instant and so is rollback — but all users are on the new build at once, and you pay for two full copies.
 
-C · Highlander ("there can be only one"). v1 is stopped, then v2 starts. Two versions never run at the same time (useful for singletons, schedulers and incompatible schemas), at the price of a gap with nothing serving, on the way out and on the way back.
+C · Highlander ("there can be only one"). v1 is stopped, then v2 starts. Two builds never run at the same time (useful for singletons, schedulers and incompatible schemas), at the price of a gap with nothing serving, on the way out and on the way back.
 
 • "Deploy a BAD build": v2 fails 40% of requests. Compare how many users each strategy exposes ("client ok" per flow) and how each recovers. Then press Heal all to roll B and C back.
 • "Deploy a good build": only C has downtime.
-• "One instance dies": requests routed to the dead host fail until it is detected (2 s), then the app runs at two thirds of its capacity.`,B=>{
- const lane=(L,y,title,v2cfg)=>{B.note(L+' · '+title,20,y-132);
-  const c=B.n('client','users-'+L,20,y,{rateMin:20,rateMax:30,timeout:1500}),lb=B.n('lb','lb-'+L,250,y);
-  const g1=B.g('api-'+L,490,y-104,216,122,{version:'v1',instances:3}),g2=B.g('api-'+L,490,y+30,216,122,Object.assign({version:'v2',instances:3,weight:0},v2cfg));
-  const s1=B.n('service','api-'+L+'-v1',510,y-72,{concurrency:4}),s2=B.n('service','api-'+L+'-v2',510,y+62,{concurrency:4}),d=B.n('sql','db-'+L,800,y);
-  B.e(c,lb);B.e(lb,s1);B.e(lb,s2);B.e(s1,d);B.e(s2,d);return{g1,g2}};
- const a=lane('A',120,'Canary — 5 → 25 → 50 → 100%, automatic rollback',{}),b=lane('B',420,'Blue/green — instant switch, both builds running',{}),c=lane('C',720,'Highlander — stop v1, then start v2',{stopped:true,weight:100});
- const co=[{group:a.g2,what:'cutover',from:a.g1,mode:'canary'},{group:b.g2,what:'cutover',from:b.g1,mode:'bluegreen'},{group:c.g2,what:'cutover',from:c.g1,mode:'highlander'}];
- B.sc('Deploy a BAD build (v2 fails 40%)','All three cut over to a build that fails 40% of requests. Heal all = roll back.',{[a.g2]:{errorRate:40},[b.g2]:{errorRate:40},[c.g2]:{errorRate:40}},{triggers:co});
+• "Region us-east is lost": two of v1's three instances disappear. Requests routed to them fail until health checks notice (2 s); afterwards the app runs on a third of its capacity.`,B=>{
+ const lane=(L,y,title,v2)=>{B.note(L+' · '+title,20,y-100);
+  const c=B.n('client','users-'+L,20,y,{rateMin:20,rateMax:30,timeout:1500});
+  const g=B.app('api-'+L,260,y-70,330,162,{clusters:[{name:'main',sgs:[{name:'v1',weight:100,regions:[['us-east',2],['us-west',1]]},Object.assign({name:'v2',weight:0,regions:[['us-east',2],['us-west',1]]},v2)]}]});
+  const s=B.n('service','api-'+L,337,y,{concurrency:4}),d=B.n('sql','db-'+L,690,y);B.e(c,s);B.e(s,d);const ss=g.clusters[0].sgs;return{v1:ss[0],v2:ss[1]}};
+ const a=lane('A',110,'Canary — 5 → 25 → 50 → 100%, automatic rollback',{}),b=lane('B',370,'Blue/green — instant switch, both builds running',{}),c=lane('C',630,'Highlander — stop v1, then start v2',{stopped:true});
+ const L=[a,b,c],co=[{group:a.v2.id,what:'cutover',from:a.v1.id,mode:'canary'},{group:b.v2.id,what:'cutover',from:b.v1.id,mode:'bluegreen'},{group:c.v2.id,what:'cutover',from:c.v1.id,mode:'highlander'}];
+ const each=f=>{const o={};for(const x of L)Object.assign(o,f(x));return o};
+ B.sc('Deploy a BAD build (v2 fails 40%)','All three cut over to a build that fails 40% of requests. Heal all = roll back.',each(x=>({[x.v2.id]:{errorRate:40}})),{triggers:co});
  B.sc('Deploy a good build','The same three cut-overs with a healthy v2.',{},{triggers:co});
- B.sc('One instance dies in each v1','A host is lost. In-flight work on it is gone and it keeps receiving traffic until health checks notice.',{},{triggers:[{group:a.g1,what:'kill'},{group:b.g1,what:'kill'},{group:c.g1,what:'kill'}]});
- B.sc('Rolling restart of each v1','Instances restart one at a time. The app stays up at reduced capacity; requests that reach the restarting host fail until health checks notice.',{},{triggers:[{group:a.g1,what:'rolling'},{group:b.g1,what:'rolling'},{group:c.g1,what:'rolling'}]});
+ B.sc('Region us-east is lost (15 s)','Two of the three v1 instances are in us-east. Work in flight there is gone, and the region keeps receiving traffic until health checks notice.',each(x=>({[x.v1.regions[0].id]:{down:true}})),{heal:15});
+ B.sc('One instance dies in each v1','A host is lost. In-flight work on it is gone and it keeps receiving traffic until health checks notice.',{},{triggers:L.map(x=>({group:x.v1.id,what:'kill'}))});
+ B.sc('Rolling restart of each v1','Instances restart one at a time. The app stays up at reduced capacity; requests that reach the restarting host fail until health checks notice.',{},{triggers:L.map(x=>({group:x.v1.id,what:'rolling'}))});
+});
+
+ex('Inbox, de-dupe and outbox as real tables','Messaging','The inbox/outbox pattern drawn the way it is built: a consumer that only writes rows, and polling loops that read each table in batches.',
+`Lane A is the pattern spelled out. The database has three tables, each one a connection point on the node:
+
+• consumer reads the topic and, in ONE transaction, inserts the message id into "dedupe" and the message into "inbox". It does nothing else, so it is fast and the broker is acknowledged quickly.
+• inbox-loop polls the inbox table every 200 ms, 20 rows at a time. For each row it calls the pricing API and then writes a row to "outbox".
+• outbox-relay polls the outbox table and publishes each row to the outgoing topic.
+
+Lane B does the same work inline: the consumer calls the API and publishes while the broker waits.
+
+Select a connection that leaves a table (the dashed line from its ●) to change the poll interval, batch size, ordering and how rows are marked as done. Select the database to add or rename tables.
+
+• "Pricing API down (15 s)": A keeps accepting; rows wait in the inbox and drain afterwards. B fails every message and leans on broker redelivery.
+• "Broker delivers duplicates": the dedupe table turns each repeat into a unique-key hit. B bills twice.
+• "Outgoing topic down (15 s)": rows pile up in the outbox, then the relay catches up.
+• "Relay loses 20% of publish acks": the topic has the event, the relay does not know, the row stays and is published again — duplicates appear in ledger-A (at-least-once).
+• Send one message with ▶ 1 on a source while paused to watch each hop and each poll delay.`,B=>{
+ B.note('A · Consumer writes rows; polling loops do the work',20,6);
+ const sa=B.n('source','orders-A',20,120,{rateMin:15,rateMax:25,keys:40}),ta=B.n('kafka','orders-in-A',250,120),ca=B.n('worker','consumer-A',480,120,{procMs:3,concurrency:8});
+ const db=B.n('sql','db-A',730,96),tD=B.t(db,'dedupe','dedupe'),tI=B.t(db,'inbox','queue'),tO=B.t(db,'outbox','queue');
+ const il=B.n('poller','inbox-loop',1110,20,{concurrency:8,procMs:5}),api=B.n('ext','pricing-api-A',1370,20,{latency:40,idempotent:true});
+ const ol=B.n('poller','outbox-relay',1110,250,{concurrency:8,procMs:2}),to=B.n('kafka','orders-out-A',1370,250),ba=B.n('worker','billing-A',1610,250),la=B.n('sql','ledger-A',1850,250);
+ B.e(sa,ta);B.e(ta,ca);
+ B.e(ca,db,{cfg:{table:tD},act:{tx:true}});B.e(ca,db,{cfg:{table:tI},act:{tx:true}});
+ const pI=B.e(db,il,{cfg:{table:tI},poll:{everyMs:200,batch:20,maxAttempts:30}});B.e(il,api,{act:{timeout:600}});B.e(il,db,{cfg:{table:tO}});
+ const pO=B.e(db,ol,{cfg:{table:tO},poll:{everyMs:200,batch:50,send:'seq',onExhaust:'block',backoff:500}});const eOut=B.e(ol,to,{act:{timeout:500}});const eB=B.e(to,ba);B.e(ba,la);
+ B.note('B · Everything inline while the broker waits',20,396);
+ const sb=B.n('source','orders-B',20,460,{rateMin:15,rateMax:25,keys:40}),tb=B.n('kafka','orders-in-B',250,460),cb=B.n('worker','handler-B',480,460,{concurrency:8});
+ const apib=B.n('ext','pricing-api-B',760,400,{latency:40,idempotent:true}),tob=B.n('kafka','orders-out-B',760,520),bb=B.n('worker','billing-B',1000,520),lb=B.n('sql','ledger-B',1240,520);
+ B.e(sb,tb);const eInB=B.e(tb,cb);B.e(cb,apib,{act:{timeout:600}});B.e(cb,tob);B.e(tob,bb);B.e(bb,lb);
+ const eInA=B.id.edge(ta,ca);
+ B.sc('Pricing API down (15 s)','The dependency the work needs is unavailable.',{[api]:{down:true},[apib]:{down:true}},{heal:15});
+ B.sc('Broker delivers duplicates (30%)','The incoming subscription redelivers a third of the messages.',{[eInA]:{dup:30},[eInB]:{dup:30}});
+ B.sc('Outgoing topic down (15 s)','Nothing can be published for a while.',{[to]:{down:true},[tob]:{down:true}},{heal:15});
+ B.sc('Relay loses 20% of publish acks','The topic stored the event but the relay never heard back, so the row stays and is published again.',{[eOut]:{respDrop:20}});
+ B.sc('Database slow ×8 (20 s)','Every insert, poll and mark gets slower.',{[db]:{latencyMult:8}},{heal:20});
+ B.sc('Burst: 5× traffic (15 s)','More arrives than the polling loops drain per interval.',{[sa]:{surge:5},[sb]:{surge:5}},{heal:15});
+});
+
+ex('Two builds reading one topic (A/B server groups)','Operations','Two server groups of the same consumer both read a topic. Shared consumer group, separate groups, or separate groups with a de-dupe table?',
+`Each box is one consumer application with two server groups, v1 and v2, at 50% each.
+
+A · Shared consumer group. The two builds split the partitions between them. Every message is handled once and each key stays on one build, so order is kept.
+
+B · A/B, separate consumer groups. v2 is marked "A/B: own consumer group", so BOTH builds read every message and both write to the database. Every update is applied twice, and when one build is slower than the other its older update lands after the faster build's newer one.
+
+C · Separate groups plus a shared de-dupe table. Both builds still read everything, but each first inserts the message id into "dedupe" in the same transaction as its write. Whichever build gets there first wins; the other hits the unique key and skips.
+
+• At rest, look at the duplicate column for B in the Consistency audit.
+• "v2 is slow ×8": B now also shows "out of order" — stale values overwriting fresh ones at the database. A just lags on half its partitions. C stays clean.
+• "v2 is a bad build (30% errors)": compare what each design loses or parks.
+• Select a box and toggle "A/B: own consumer group" on a server group to switch a lane between the designs.`,B=>{
+ const lane=(L,y,title,own,dd)=>{B.note(L+' · '+title,20,y-100);
+  const s=B.n('source','events-'+L,20,y,{rateMin:20,rateMax:30,keys:12}),t=B.n('kafka','topic-'+L,250,y,{partitions:4});
+  const g=B.app('projector-'+L,490,y-70,330,162,{clusters:[{name:'main',sgs:[{name:'v1',weight:50,regions:[['region-1',2]]},{name:'v2',weight:50,consume:own?'own':'shared',regions:[['region-1',2]]}]}]});
+  const c=B.n('worker','projector-'+L,567,y,{concurrency:8,procMs:15}),d=B.n('sql','view-db-'+L,920,dd?y-20:y);
+  B.e(s,t);B.e(t,c);if(dd){const tD=B.t(d,'dedupe','dedupe'),tV=B.t(d,'view','data');B.e(c,d,{cfg:{table:tD},act:{tx:true}});B.e(c,d,{cfg:{table:tV},act:{tx:true}})}else B.e(c,d);
+  return{v2:g.clusters[0].sgs[1],v1:g.clusters[0].sgs[0]}};
+ const a=lane('A',110,'Shared consumer group — the builds split the partitions',false,false),b=lane('B',370,'A/B with separate consumer groups — both builds read everything',true,false),c=lane('C',630,'Separate groups + shared de-dupe table',true,true);
+ const each=f=>Object.assign({},f(a),f(b),f(c));
+ B.sc('v2 is slow ×8','The new build takes eight times longer per message.',each(x=>({[x.v2.id]:{latencyMult:8}})));
+ B.sc('v2 is a bad build (30% errors, 20 s)','The new build fails a third of its messages.',each(x=>({[x.v2.id]:{errorRate:30}})),{heal:20});
+ B.sc('One v1 instance dies','Half of v1\'s capacity is gone and its in-flight messages are redelivered.',{},{triggers:[a,b,c].map(x=>({group:x.v1.id,what:'kill'}))});
+});
+
+ex('Clusters and regions: what a shard or a data centre takes with it','Availability','The same API deployed as one big cluster or as three shards, each spread over two regions.',
+`A · One cluster. Six instances in two regions serve every key.
+
+B · Three clusters (shards). Each key always lands on the same cluster — the tabs on the box switch between them. Each cluster has its own two instances.
+
+• "One cluster is lost": in B, a third of the keys fail completely while the rest never notice. A has no such blast radius, and no such isolation either.
+• "A bad build reaches one cluster": B can roll a build out shard by shard; only a third of the keys ever see it.
+• "Region us-east is lost": both designs lose half their instances. Requests routed to the dead half fail for 2 s, then the survivors carry everything at half capacity.
+• "Hot key range": 3× traffic. Sharding does not add capacity for a single hot shard.`,B=>{
+ B.note('A · One cluster, 6 instances over two regions',20,10);
+ const ca=B.n('client','users-A',20,110,{rateMin:60,rateMax:80,keys:300,timeout:1500});
+ const ga=B.app('api-A',260,40,330,162,{clusters:[{name:'main',sgs:[{name:'v1',regions:[['us-east',3],['us-west',3]]}]}]});
+ const sa=B.n('service','api-A',337,110,{concurrency:4,procMs:20}),da=B.n('sql','db-A',690,110,{maxConc:60});B.e(ca,sa);B.e(sa,da);
+ B.note('B · Three clusters (shards by key), 2 instances each',20,270);
+ const cb=B.n('client','users-B',20,370,{rateMin:60,rateMax:80,keys:300,timeout:1500});
+ const sh=n=>({name:n,sgs:[{name:'v1',regions:[['us-east',1],['us-west',1]]}]});
+ const gb=B.app('api-B',260,300,330,162,{clusters:[sh('shard-1'),sh('shard-2'),sh('shard-3')]});
+ const sb=B.n('service','api-B',337,370,{concurrency:4,procMs:20}),dbb=B.n('sql','db-B',690,370,{maxConc:60});B.e(cb,sb);B.e(sb,dbb);
+ const A1=ga.clusters[0].sgs[0],B1=gb.clusters[0].sgs[0],east={[A1.regions[0].id]:{down:true}};for(const c of gb.clusters)east[c.sgs[0].regions[0].id]={down:true};
+ B.sc('One cluster is lost (15 s)','Shard-2 of B goes down. A has only one cluster, so the comparison is the whole of A staying up.',{[gb.clusters[1].id]:{down:true}},{heal:15});
+ B.sc('A bad build reaches one cluster','40% errors on the build in A (all keys) and on shard-1 of B (a third of the keys).',{[A1.id]:{errorRate:40},[B1.id]:{errorRate:40}},{heal:20});
+ B.sc('Region us-east is lost (15 s)','Half of every server group\'s instances disappear.',east,{heal:15});
+ B.sc('Hot key range: 3× traffic (15 s)','Demand beyond what the instances can serve.',{[ca]:{surge:3},[cb]:{surge:3}},{heal:15});
 });
 if(typeof module!=='undefined')module.exports={EXAMPLES};
 </script>
@@ -1272,14 +1512,20 @@ const OBF=[['outboxMode','Relay finds new rows by','sel',{poll:'Polling the outb
  ['outboxMark','Mark rows as sent','sel',{each:'After each publish',batch:'Once per batch'},'Once per batch costs one DB write instead of many, but if any publish in the batch fails, or the service crashes, the whole batch is published again: more duplicates downstream.']];
 const IBF=[['inbox','Use an inbox table','bool',null,'Incoming messages are stored durably and acknowledged straight away. A poller then processes them in batches, retries failures, and ignores any message it has already stored (de-duplication). Costs: extra delay, a throughput cap, one more table.'],
  ['inboxPollMs','Poll interval (ms)','num',P(10,60000,10)],['inboxBatch','Rows per poll (batch size)','num',P(1,5000,1)],['inboxMax','Attempts before parking a row','num',P(1,100,1)],['inboxCap','Inbox capacity (rows)','num',P(1,10000000,10)]];
-const GF=[['version','Version label','txt',{ph:'e.g. v2'}],['instances','Instances (hosts)','num',P(1,50,1),'Every service in the box runs on each instance, so its concurrency is per instance.'],
- ['weight','Baseline traffic share','rng',P(0,100,5,'%'),'Relative weight used whenever a load balancer, queue or shared consumer group chooses between this app and another. 0 = deployed but receiving nothing.'],
- ['stopped','Not running at baseline','bool',null,'The app is not deployed until a cut-over starts it.'],['startMs','Start-up time (ms)','num',P(0,120000,100)],
- ['detectMs','Failure detection time (ms)','num',P(0,60000,100),'After an instance dies, requests still routed to it fail until health checks notice.']];
-const GCF=[['canarySteps','Canary steps (% of traffic)','txt',{ph:'5,25,50,100'}],['canaryStepS','Seconds per canary step','num',P(0.5,600,0.5)],['canaryRollback','Auto roll back above error %','num',P(0,100,1),'Checked at the end of each step against the new version\'s own error rate. 0 = never roll back automatically.']];
-const GFF=[['down','Whole app down (every instance)','bool'],['instDown','Instances down','num',P(0,50,1),'Capacity drops in proportion, work in flight on those instances is lost, and requests routed to them fail until the failure is detected.'],
- ['errorRate','Error rate (bad build)','rng',P(0,100,1,'%'),'Every service in the app fails this share of its requests — a buggy release.'],['latencyMult','Slow host','rng',P(1,50,0.5,'×')],
- ['partition','Network-isolate the app','bool',null,'Every connection that crosses the box boundary becomes a black hole.']];
+const GF=[['startMs','Start-up time of a server group (ms)','num',P(0,120000,100)],['detectMs','Failure detection time (ms)','num',P(0,60000,100),'After instances die, requests still routed to them fail until health checks notice.'],
+ ['sticky','Pin each key to one server group','bool',null,'A/B testing: the same user or order always lands on the same build. Off = every request is split at random according to the traffic shares.']];
+const GCF=[['canarySteps','Canary steps (% of traffic)','txt',{ph:'5,25,50,100'}],['canaryStepS','Seconds per canary step','num',P(0.5,600,0.5)],['canaryRollback','Auto roll back above error %','num',P(0,100,1),'Checked at the end of each step against the new build\'s own error rate. 0 = never roll back automatically.']];
+const GFF=[['down','Whole application down (every cluster)','bool'],['partition','Network-isolate the application','bool',null,'Every connection that crosses the box boundary becomes a black hole.']];
+const SGF=[['stopped','Not running at baseline','bool',null,'This server group is not deployed until a cut-over starts it.'],
+ ['consume','Reading topics','sel',{shared:'Shared consumer group (each message once)',own:'A/B: own consumer group (reads everything)'},'Shared: the server groups split a topic\'s partitions by their traffic share, so each message is handled by one build. Own: this server group also receives every message, so two builds process the same messages side by side.']];
+const SFF=[['down','Server group down','bool'],['instDown','Instances down','num',P(0,200,1),'Capacity drops in proportion, work in flight on them is lost, and requests routed to them fail until the failure is detected.'],
+ ['errorRate','Error rate (bad build)','rng',P(0,100,1,'%'),'Every service in this server group fails this share of its requests.'],['latencyMult','Slow build / hosts','rng',P(1,50,0.5,'×')]];
+const POLLF=[['everyMs','Poll interval (ms)','num',P(10,600000,10)],['batch','Rows per poll (batch size)','num',P(1,5000,1)],
+ ['send','Process a batch','sel',{keyed:'In parallel, one at a time per key',seq:'One row at a time, in order',parallel:'All at once (unordered)'},'Per key keeps each entity\'s rows in order while different entities run side by side. Strict order is slowest, and one failing row holds everything behind it. All at once is fastest, and rows for the same key can overtake each other.'],
+ ['mark','Mark rows as done','sel',{each:'After each row',batch:'Once per batch'},'Once per batch is one database write instead of many, but if any row in the batch fails, the whole batch is read and processed again.'],
+ ['maxAttempts','Attempts before parking a row','num',P(1,1000,1)],['backoff','Wait after a failed batch (ms)','num',P(0,600000,50)],
+ ['onExhaust','When attempts run out','sel',{park:'Park the row',block:'Keep retrying forever'}],['timeout','Row lease (ms)','num',P(100,600000,100),'A row that has not been finished within this time is released and will be read again.']];
+const TKIND={queue:'Work table (inbox / outbox)',dedupe:'De-dupe table (unique id)',data:'Data table'};
 
 function field(obj,f,onch){const k=f[0],label=f[1],type=f[2],o=f[3]||{},help=f[4];let inp;const v=obj[k];
  if(type==='bool'){inp=h('input',{type:'checkbox'});inp.checked=!!v;inp.onchange=()=>{obj[k]=inp.checked;onch&&onch(k)}}
@@ -1298,30 +1544,53 @@ function mkNode(n){const T=TYPES[n.type],k=T.kind,g=document.createElementNS(SVG
 <text class="ico" x="13" y="28">${T.icon}</text><text class="nm" x="40" y="21"></text><text class="ty" x="40" y="35"></text>
 <text class="s1" x="13" y="53"></text><text class="s2" x="13" y="67"></text>
 <rect class="gbg" x="6" y="${NH-4}" width="${NW-12}" height="2.5" rx="1"/><rect class="gfill" x="6" y="${NH-4}" width="0" height="2.5" rx="1"/>
-<circle class="dot" cx="${NW-13}" cy="14" r="4.5"/><text class="zap" x="${NW-36}" y="19">⚡</text>${port}`+(k==='producer'?`<g class="one"><title>Send ONE message now (works while paused or with sources held)</title><rect x="${NW-42}" y="${NH-34}" width="30" height="16" rx="4"/><text x="${NW-36}" y="${NH-22}">▶ 1</text></g>`:'');
- nodesG.append(g);const q=s=>g.querySelector(s);
- return nodeEls[n.id]={g,nm:q('.nm'),ty:q('.ty'),s1:q('.s1'),s2:q('.s2'),gf:q('.gfill'),dot:q('.dot')}}
+<circle class="dot" cx="${NW-13}" cy="14" r="4.5"/><text class="zap" x="${NW-36}" y="19">⚡</text>${port}`+(k==='producer'?`<g class="one"><title>Send ONE message now (works while paused or with sources held)</title><rect x="${NW-42}" y="${NH-34}" width="30" height="16" rx="4"/><text x="${NW-36}" y="${NH-22}">▶ 1</text></g>`:'')+(k==='store'?tableRows(n):'');
+ nodesG.append(g);const q=s=>g.querySelector(s),tr={};for(const x of g.querySelectorAll('[data-tx]'))tr[x.dataset.tx]=x;
+ return nodeEls[n.id]={g,nm:q('.nm'),ty:q('.ty'),s1:q('.s1'),s2:q('.s2'),gf:q('.gfill'),dot:q('.dot'),tr}}
+/* a database's tables are drawn as rows under the node; each row is a connection point */
+const TRH=20,trY=i=>NH+3+i*TRH,nodeH=n=>NH+(KIND(n)==='store'&&n.cfg.tables&&n.cfg.tables.length?n.cfg.tables.length*TRH+4:0);
+function tableRows(n){return(n.cfg.tables||[]).map((t,i)=>{const y=trY(i);return`<g class="trow" data-t="${t.id}"><title>${esc(TKIND[t.kind])} — drop a connection from a service on this row to write to it</title><rect x="8" y="${y}" width="${NW-16}" height="${TRH-2}" rx="4"/><text x="18" y="${y+13}" data-tx="${t.id}"></text><circle class="tin" cx="8" cy="${y+9}" r="3.5"/>`+(t.kind==='queue'?`<circle class="port tport" data-t="${t.id}" cx="${NW-8}" cy="${y+9}" r="6"><title>Drag to the polling loop (or service) that reads this table</title></circle>`:'')+'</g>'}).join('')}
+function tAnchor(n,tid,side){const i=(n.cfg.tables||[]).findIndex(t=>t.id===tid);return i<0?null:{x:n.x+(side>0?NW-8:8),y:n.y+trY(i)+9}}
 function mkEdge(e){const g=document.createElementNS(SVGNS,'g');g.setAttribute('class','edge');g.dataset.id=e.id;
  g.innerHTML='<path class="hit"/><path class="ln" marker-end="url(#arr)"/><text class="el"></text>';edgesG.append(g);
  return edgeEls[e.id]={g,hit:g.children[0],ln:g.children[1],label:g.children[2],stat:'',dur:0}}
 function geom(e){const a=nodeById(e.from),b=nodeById(e.to),ax=a.x+NW/2,ay=a.y+NH/2,bx=b.x+NW/2,by=b.y+NH/2,dx=bx-ax,dy=by-ay;let p0,p3,c1,c2;
+ if(e.cfg.table){const into=KIND(b)==='store',st=into?b:KIND(a)==='store'?a:null,o=into?a:b;
+  if(st&&tableOf(st,e.cfg.table)){const s=(o.x+NW/2)>=(st.x+NW/2)?1:-1,T=tAnchor(st,e.cfg.table,s),O={x:o.x+NW/2-s*NW/2,y:o.y+NH/2+(into?7:-7)},d=Math.max(30,Math.abs(O.x-T.x)*0.45),cT={x:T.x+s*d,y:T.y},cO={x:O.x-s*d,y:O.y};
+   return into?[O,cO,cT,T]:[T,cT,cO,O]}}
  if(Math.abs(dx)>=Math.abs(dy)*0.9){const s=dx>=0?1:-1,off=s*7;p0={x:ax+s*NW/2,y:ay+off};p3={x:bx-s*NW/2,y:by+off};const d=Math.max(30,Math.abs(p3.x-p0.x)*0.45);c1={x:p0.x+s*d,y:p0.y};c2={x:p3.x-s*d,y:p3.y}}
  else{const s=dy>=0?1:-1,off=-s*12;p0={x:ax+off,y:ay+s*NH/2};p3={x:bx+off,y:by-s*NH/2};const d=Math.max(26,Math.abs(p3.y-p0.y)*0.45);c1={x:p0.x,y:p0.y+s*d};c2={x:p3.x,y:p3.y-s*d}}
  return[p0,c1,c2,p3]}
 function bez(p,u){const v=1-u,a=v*v*v,b=3*v*v*u,c=3*v*u*u,d=u*u*u;return{x:a*p[0].x+b*p[1].x+c*p[2].x+d*p[3].x,y:a*p[0].y+b*p[1].y+c*p[2].y+d*p[3].y}}
 function placeEdge(e){const el=edgeEls[e.id];if(!el)return;const p=GEO[e.id]=geom(e),d=`M${p[0].x},${p[0].y} C${p[1].x},${p[1].y} ${p[2].x},${p[2].y} ${p[3].x},${p[3].y}`;
- el.hit.setAttribute('d',d);el.ln.setAttribute('d',d);const m=bez(p,0.5);el.label.setAttribute('x',m.x);el.label.setAttribute('y',m.y-5)}
+ el.hit.setAttribute('d',d);el.ln.setAttribute('d',d);const m=bez(p,e.cfg.poll?0.3:e.cfg.table?0.78:0.5);el.label.setAttribute('x',m.x);el.label.setAttribute('y',m.y-5)}
 function placeNode(n){nodeEls[n.id].g.setAttribute('transform',`translate(${n.x},${n.y})`)}
+const gTab={},coSel={};
+const curCluster=g=>g.clusters.find(c=>c.id===gTab[g.id])||g.clusters[0];
+const allSgs=g=>{const o=[];for(const c of g.clusters)for(const s of c.sgs)o.push(s);return o};
+const gInst=g=>allSgs(g).reduce((t,s)=>t+sim.gN(s),0);
+const sgFaulty=s=>isFaulty(s.fault,SFDEF)||s.regions.some(r=>r.fault.down);
 function mkGroup(g){const el=document.createElementNS(SVGNS,'g');el.setAttribute('class','grp');el.dataset.gid=g.id;
- el.innerHTML='<rect class="gbox" rx="10"/><rect class="ghd" rx="8" height="24"><title>Drag to move the app and everything inside it</title></rect><text class="gnm" x="10" y="16"></text><text class="gst" y="16"></text><rect class="grs" width="12" height="12" rx="2"><title>Drag to resize</title></rect>';
- groupsG.append(el);const q=s=>el.querySelector(s);return groupEls[g.id]={g:el,box:q('.gbox'),hd:q('.ghd'),nm:q('.gnm'),st:q('.gst'),rs:q('.grs')}}
-function placeGroup(g){const el=groupEls[g.id];if(!el)return;el.g.setAttribute('transform',`translate(${g.x},${g.y})`);el.box.setAttribute('width',g.w);el.box.setAttribute('height',g.h);el.hd.setAttribute('width',g.w);el.st.setAttribute('x',g.w-10);el.rs.setAttribute('x',g.w-14);el.rs.setAttribute('y',g.h-14)}
-function gState(g){const N=sim.gN(g),live=sim.gLive(g);return sim.gStopped(g)?'stopped':sim.grt(g).startUntil>sim.t?'starting…':g.fault.down||live<=0?'DOWN':live<N?live+' of '+N+' up':N>1?N+' instances':'1 instance'}
-function updGroups(){for(const g of M.groups){const el=groupEls[g.id];if(!el)continue;const N=sim.gN(g),live=sim.gLive(g),off=sim.gOff(g),w=sim.gW(g);
-  const dots=sim.gStopped(g)||g.fault.down?'':'●'.repeat(Math.min(live,10))+'○'.repeat(Math.min(N-live,10))+'  ';
-  el.st.textContent=dots+(off?gState(g):Math.round(w)+'% traffic');
-  el.nm.textContent=cut(g.name+(g.cfg.version?' · '+g.cfg.version:''),Math.max(5,Math.floor((g.w-28-el.st.textContent.length*6.4)/7.2)));
-  el.g.classList.toggle('down',off);el.g.classList.toggle('idle',!off&&w<=0);el.g.classList.toggle('faulty',!off&&isFaulty(g.fault,GFDEF))}}
+ el.innerHTML='<rect class="gbox" rx="10"/><rect class="ghd" rx="8" height="24"><title>Drag to move the application and everything inside it</title></rect><text class="gnm" x="10" y="16"></text><g class="gtabs"></g><g class="gsecs"></g><rect class="grs" width="12" height="12" rx="2"><title>Drag to resize</title></rect>';
+ groupsG.append(el);const q=s=>el.querySelector(s);return groupEls[g.id]={g:el,box:q('.gbox'),hd:q('.ghd'),nm:q('.gnm'),tabs:q('.gtabs'),secs:q('.gsecs'),rs:q('.grs'),sig:'',se:{}}}
+function placeGroup(g){const el=groupEls[g.id];if(!el)return;el.g.setAttribute('transform',`translate(${g.x},${g.y})`);el.box.setAttribute('width',g.w);el.box.setAttribute('height',g.h);el.hd.setAttribute('width',g.w);el.rs.setAttribute('x',g.w-14);el.rs.setAttribute('y',g.h-14)}
+function sgState(s){const N=sim.gN(s),live=sim.gLive(s),i=sim.si(s);return sim.gStopped(s)?'stopped':sim.grt(s).startUntil>sim.t?'starting…':s.fault.down||(i&&(i.g.fault.down||i.c.fault.down))||live<=0?'DOWN':live<N?live+' of '+N+' up':N+(N>1?' instances':' instance')}
+function sgDots(s){let dead=s.fault.instDown|0;return s.regions.map(r=>{const n=Math.max(0,r.instances|0);let up=r.fault.down?0:n;const k=Math.min(up,dead);up-=k;dead-=k;return r.name+' '+(n>6?up+'/'+n:'●'.repeat(up)+'○'.repeat(n-up))}).join('  ')}
+/* the box shows one cluster at a time: tabs in the title bar pick it, the strip below has one section per server group */
+function drawGroup(g){const el=groupEls[g.id];if(!el)return;const c=curCluster(g),mc=g.clusters.length>1,name=cut(g.name,24);
+ const sig=g.w+'|'+name+'|'+g.clusters.map(x=>x.id+':'+x.name).join()+'|'+c.id+'|'+c.sgs.map(s=>s.id).join();
+ if(el.sig!==sig){el.sig=sig;el.nm.textContent=name;let x=name.length*7.4+20,t='';
+  if(mc)for(const k of g.clusters){const w=Math.max(30,k.name.length*6.1+14);t+=`<g data-c="${k.id}"><rect class="gtab${k===c?' on':''}" x="${x}" y="4" width="${w}" height="16" rx="4"><title>Cluster ${esc(k.name)} — click to show its server groups</title></rect><text class="gtabt" x="${x+w/2}" y="15.5">${esc(k.name)}</text></g>`;x+=w+4}
+  el.tabs.innerHTML=t;const n=c.sgs.length,w=(g.w-12-(n-1)*4)/n;el.se={};
+  el.secs.innerHTML=c.sgs.map((s,i)=>{const sx=6+i*(w+4);return`<g data-s="${s.id}"><rect class="gsec" x="${sx}" y="28" width="${w}" height="32" rx="5"><title>Server group — click to edit, deploy or break it</title></rect><text class="gs1" x="${sx+7}" y="41"></text><text class="gs2" x="${sx+7}" y="54"></text></g>`}).join('');
+  for(const s of c.sgs){const q=el.secs.querySelector('[data-s="'+s.id+'"]');el.se[s.id]={r:q.children[0],t1:q.children[1],t2:q.children[2],w}}}
+ let allOff=true,anyF=isFaulty(g.fault,GFDEF);
+ for(const k of g.clusters){if(isFaulty(k.fault,CFDEF))anyF=true;for(const s of k.sgs){if(!sim.gOff(s))allOff=false;if(sgFaulty(s))anyF=true}}
+ for(const s of c.sgs){const e=el.se[s.id];if(!e)continue;const off=sim.gOff(s),w=sim.gW(s),ch=Math.max(4,Math.floor((e.w-12)/6.3));
+  e.t1.textContent=cut(s.name+' · '+(off?sgState(s):Math.round(w)+'%')+(s.cfg.consume==='own'?' · A/B':''),ch);e.t2.textContent=cut(sgDots(s),Math.floor(ch*1.12));
+  e.r.setAttribute('class','gsec'+(off?' down':w<=0?' idle':'')+(sgFaulty(s)?' faulty':'')+(sel&&sel.t==='g'&&sel.sg===s.id?' on':''))}
+ el.g.classList.toggle('down',allOff);el.g.classList.toggle('faulty',!allOff&&anyF)}
+function updGroups(){for(const g of M.groups)drawGroup(g)}
 function renderGraph(){nodesG.innerHTML='';edgesG.innerHTML='';groupsG.innerHTML='';nodeEls={};edgeEls={};groupEls={};GEO={};
  for(const g of M.groups){mkGroup(g);placeGroup(g)}
  for(const n of M.nodes){mkNode(n);placeNode(n)}for(const e of M.edges){mkEdge(e);placeEdge(e)}
@@ -1330,15 +1599,16 @@ function refreshStatic(){for(const n of M.nodes){const el=nodeEls[n.id];if(!el)c
   if(el.note){el.nm.textContent=n.name;continue}
   el.nm.textContent=cut(n.name,19);el.ty.textContent=TYPES[n.type].label;el.g.classList.toggle('faulty',isFaulty(n.fault,FDEF[k]))}
  for(const e of M.edges){const el=edgeEls[e.id];if(!el)continue;const a=nodeById(e.from),b=nodeById(e.to),ka=KIND(a);let st='';
-  if(ka==='service'){const i=a.cfg.actions.findIndex(x=>x.edge===e.id);if(i>=0){const x=a.cfg.actions[i],ob=x.outbox&&MSGK[KIND(b)];st='#'+(i+1)+(x.tx?' tx':'')+(ob?' outbox '+(a.cfg.outboxMode==='cdc'?'CDC':'⟳'+a.cfg.outboxPollMs+'ms×'+a.cfg.outboxBatch):'')+(x.when==='fallback'?' fallback':'')+(x.op==='read'?' read':'')}}
+  if(ka==='service'){const i=a.cfg.actions.findIndex(x=>x.edge===e.id);if(i>=0){const x=a.cfg.actions[i],ob=x.outbox&&MSGK[KIND(b)],T=tableOf(b,e.cfg.table);st='#'+(i+1)+(T?' → '+T.name:'')+(x.tx?' tx':'')+(ob?' outbox '+(a.cfg.outboxMode==='cdc'?'CDC':'⟳'+a.cfg.outboxPollMs+'ms×'+a.cfg.outboxBatch):'')+(x.when==='fallback'?' fallback':'')+(x.op==='read'?' read':'')}}
+  else if(e.cfg.poll){const p=e.cfg.poll,T=tableOf(a,e.cfg.table);st=(T?T.name+' ':'')+'⟳'+p.everyMs+'ms×'+p.batch}
   else if(e.cfg.sub){if(e.cfg.sub.ack==='before')st='at-most-once';if(ka==='log'&&e.cfg.sub.group)st+=(st?' ':'')+'group:'+e.cfg.sub.group}
   if(b&&KIND(b)==='service'&&b.cfg.inbox)st+=(st?' ':'')+'→ inbox ⟳'+b.cfg.inboxPollMs+'ms×'+b.cfg.inboxBatch;
-  el.stat=st;el.g.classList.toggle('async',!!MSGK[ka]);el.g.classList.toggle('faulty',isFaulty(e.fault,EFDEF))}}
+  el.stat=st;el.g.classList.toggle('async',!!MSGK[ka]||!!e.cfg.poll);el.g.classList.toggle('faulty',isFaulty(e.fault,EFDEF))}}
 function applySel(){for(const id in nodeEls)nodeEls[id].g.classList.toggle('sel',!!sel&&sel.t==='n'&&sel.id===id);for(const id in edgeEls)edgeEls[id].g.classList.toggle('sel',!!sel&&sel.t==='e'&&sel.id===id);for(const id in groupEls)groupEls[id].g.classList.toggle('sel',!!sel&&sel.t==='g'&&sel.id===id)}
-function select(s){sel=s;applySel();renderInsp()}
+function select(s){sel=s;applySel();if(sim)updGroups();renderInsp()}
 function applyVp(){vpG.setAttribute('transform',`translate(${vp.x},${vp.y}) scale(${vp.k})`)}
 function fitView(){if(!M.nodes.length&&!M.groups.length){vp={x:30,y:20,k:1};return applyVp()}let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
- for(const n of M.nodes){x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x+(KIND(n)==='note'?n.name.length*7.5:NW));y1=Math.max(y1,n.y+(KIND(n)==='note'?20:NH))}
+ for(const n of M.nodes){x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x+(KIND(n)==='note'?n.name.length*7.5:NW));y1=Math.max(y1,n.y+(KIND(n)==='note'?20:nodeH(n)))}
  for(const g of M.groups){x0=Math.min(x0,g.x);y0=Math.min(y0,g.y);x1=Math.max(x1,g.x+g.w);y1=Math.max(y1,g.y+g.h)}
  const W=svg.clientWidth||900,H=svg.clientHeight||500,k=Math.max(0.35,Math.min(1.15,(W-70)/(x1-x0),(H-70)/(y1-y0)));
  vp={k,x:(W-(x1-x0)*k)/2-x0*k,y:(H-(y1-y0)*k)/2-y0*k};applyVp()}
@@ -1348,10 +1618,13 @@ function structural(){regroup(M);M.rev=(M.rev|0)+1;renderGraph();save();sig={}}
 /* ---------- pointer interaction ---------- */
 svg.addEventListener('pointerdown',ev=>{if(ev.button!==0)return;const t=ev.target,ng=t.closest('.node'),eg=t.closest('.edge'),gg=t.closest('.grp'),w=toWorld(ev);
  if(ng&&t.closest('.one')){sendOne(nodeById(ng.dataset.id));ev.preventDefault();return}
- if(ng&&t.classList.contains('port')){drag={mode:'conn',from:ng.dataset.id};tmp.style.display=''}
+ if(ng&&t.classList.contains('port')){drag={mode:'conn',from:ng.dataset.id,table:t.dataset.t||''};tmp.style.display=''}
  else if(ng){const n=nodeById(ng.dataset.id);if(!sel||sel.id!==n.id)select({t:'n',id:n.id});drag={mode:'node',n,dx:w.x-n.x,dy:w.y-n.y,moved:false,grp:n.group||null}}
  else if(eg){select({t:'e',id:eg.dataset.id});return}
- else if(gg){const g=groupById(gg.dataset.gid);if(!sel||sel.id!==g.id)select({t:'g',id:g.id});
+ else if(gg){const g=groupById(gg.dataset.gid),tc=t.closest('[data-c]'),ts=t.closest('[data-s]');
+  if(tc){gTab[g.id]=tc.dataset.c;select({t:'g',id:g.id});return}
+  if(ts){openActs.add(ts.dataset.s);select({t:'g',id:g.id,sg:ts.dataset.s});return}
+  if(!sel||sel.id!==g.id||sel.sg)select({t:'g',id:g.id});
   if(t.classList.contains('grs'))drag={mode:'gsize',g,sx:w.x,sy:w.y,ow:g.w,oh:g.h};
   else if(t.classList.contains('ghd')){const inside=(x,y)=>x>=g.x&&x<=g.x+g.w&&y>=g.y&&y<=g.y+g.h;
    drag={mode:'group',g,sx:w.x,sy:w.y,ox:g.x,oy:g.y,moved:false,mem:M.nodes.filter(n=>inside(n.x+(KIND(n)==='note'?10:NW/2),n.y+(KIND(n)==='note'?8:NH/2))).map(n=>({n,x:n.x,y:n.y})),
@@ -1364,21 +1637,21 @@ svg.addEventListener('pointermove',ev=>{if(!drag)return;const w=toWorld(ev);
  else if(drag.mode==='pan'){vp.x=drag.ox+ev.clientX-drag.sx;vp.y=drag.oy+ev.clientY-drag.sy;if(Math.abs(ev.clientX-drag.sx)+Math.abs(ev.clientY-drag.sy)>3)drag.moved=true;applyVp()}
  else if(drag.mode==='group'){const g=drag.g,dx=Math.round(w.x-drag.sx),dy=Math.round(w.y-drag.sy);g.x=drag.ox+dx;g.y=drag.oy+dy;drag.moved=true;placeGroup(g);
   for(const m of drag.mem){m.n.x=m.x+dx;m.n.y=m.y+dy;placeNode(m.n)}for(const s of drag.sub){s.g.x=s.x+dx;s.g.y=s.y+dy;placeGroup(s.g)}for(const e of M.edges)placeEdge(e)}
- else if(drag.mode==='gsize'){const g=drag.g;g.w=Math.max(200,Math.round(drag.ow+w.x-drag.sx));g.h=Math.max(110,Math.round(drag.oh+w.y-drag.sy));placeGroup(g);updGroups()}
- else if(drag.mode==='conn'){const a=nodeById(drag.from);tmp.setAttribute('d',`M${a.x+NW},${a.y+NH/2} L${w.x},${w.y}`)}});
-function membership(n,before){if(regroup(M)){sim.syncFaults();sig={};if(n&&(n.group||null)!==before){const g=n.group&&groupById(n.group);toast(g?n.name+' now runs inside '+g.name:n.name+' left its app group')}if(sel&&sel.t==='g')renderInsp()}updGroups();save()}
+ else if(drag.mode==='gsize'){const g=drag.g;g.w=Math.max(220,Math.round(drag.ow+w.x-drag.sx));g.h=Math.max(150,Math.round(drag.oh+w.y-drag.sy));placeGroup(g);updGroups()}
+ else if(drag.mode==='conn'){const a=nodeById(drag.from),p=(drag.table&&tAnchor(a,drag.table,1))||{x:a.x+NW,y:a.y+NH/2};tmp.setAttribute('d',`M${p.x},${p.y} L${w.x},${w.y}`)}});
+function membership(n,before){if(regroup(M)){sim.syncFaults();sig={};if(n&&(n.group||null)!==before){const g=n.group&&groupById(n.group);toast(g?n.name+' now runs inside '+g.name:n.name+' left its application')}if(sel&&sel.t==='g')renderInsp()}updGroups();save()}
 svg.addEventListener('pointerup',ev=>{if(!drag)return;const d=drag;drag=null;try{svg.releasePointerCapture(ev.pointerId)}catch(e){}
  if(d.mode==='node'){if(d.moved)membership(d.n,d.grp)}
  else if(d.mode==='group'){if(d.moved)membership()}
  else if(d.mode==='gsize')membership()
  else if(d.mode==='pan'){if(!d.moved&&!d.keep)select(null)}
  else if(d.mode==='conn'){tmp.style.display='none';tmp.removeAttribute('d');const el=document.elementFromPoint(ev.clientX,ev.clientY),ng=el&&el.closest&&el.closest('.node');
-  if(ng){const a=nodeById(d.from),b=nodeById(ng.dataset.id),err=canConnect(M,a,b);if(err)toast(err);else{const e=addEdge(M,a.id,b.id);structural();if(KIND(a)==='service'){const act=a.cfg.actions[a.cfg.actions.length-1];openActs.add(act.id);select({t:'n',id:a.id})}else select({t:'e',id:e.id})}}}});
+  if(ng){const a=nodeById(d.from),b=nodeById(ng.dataset.id),row=el.closest('.trow'),table=d.table||(row&&KIND(b)==='store'?row.dataset.t:''),err=canConnect(M,a,b,table);if(err)toast(err);else{const e=addEdge(M,a.id,b.id,table?{cfg:{table}}:null);structural();if(KIND(a)==='service'){const act=a.cfg.actions[a.cfg.actions.length-1];openActs.add(act.id);select({t:'n',id:a.id})}else select({t:'e',id:e.id})}}}});
 svg.addEventListener('wheel',ev=>{ev.preventDefault();const r=svg.getBoundingClientRect(),mx=ev.clientX-r.left,my=ev.clientY-r.top,k=Math.max(0.25,Math.min(2.2,vp.k*Math.exp(-ev.deltaY*0.0012)));
  vp.x=mx-(mx-vp.x)*k/vp.k;vp.y=my-(my-vp.y)*k/vp.k;vp.k=k;applyVp()},{passive:false});
 const stage=$('#stage');
 stage.addEventListener('dragover',ev=>ev.preventDefault());
-stage.addEventListener('drop',ev=>{ev.preventDefault();const type=ev.dataTransfer.getData('text/plain'),w=toWorld(ev);if(type==='group'){const g=addGroup(M,w.x-130,w.y-75);structural();return select({t:'g',id:g.id})}if(!TYPES[type])return;const n=addNode(M,type,w.x-NW/2,w.y-NH/2);structural();select({t:'n',id:n.id})});
+stage.addEventListener('drop',ev=>{ev.preventDefault();const type=ev.dataTransfer.getData('text/plain'),w=toWorld(ev);if(type==='group'){const g=addGroup(M,w.x-150,w.y-100);structural();return select({t:'g',id:g.id})}if(!TYPES[type])return;const n=addNode(M,type,w.x-NW/2,w.y-NH/2);structural();select({t:'n',id:n.id})});
 function delSel(){if(!sel)return;if(sel.t==='n'){const n=nodeById(sel.id);if(n){sim.forget(n);removeNode(M,n.id)}}else if(sel.t==='g'){removeGroup(M,sel.id);sim.syncFaults()}else removeEdge(M,sel.id);sel=null;structural();renderInsp()}
 document.addEventListener('keydown',ev=>{const t=ev.target.tagName;if(t==='INPUT'||t==='TEXTAREA'||t==='SELECT')return;
  if(ev.key==='Delete'||ev.key==='Backspace'){if(sel){delSel();ev.preventDefault()}}
@@ -1390,22 +1663,23 @@ function buildPalette(){const p=$('#palette');p.innerHTML='';const groups={};for
  for(const g in groups){p.append(h('h3',{style:'color:'+GC[g]},g));for(const t of groups[g]){const T=TYPES[t];
   p.append(h('div',{class:'pi',draggable:'true',title:T.desc+'\n(click to add, or drag onto the canvas)',ondragstart:ev=>ev.dataTransfer.setData('text/plain',t),
    onclick:()=>{const W=svg.clientWidth,H=svg.clientHeight,o=(addN++%6)*26;const n=addNode(M,t,(W/2-vp.x)/vp.k-NW/2+o,(H/2-vp.y)/vp.k-NH/2+o);structural();select({t:'n',id:n.id})}},h('i',null,T.icon),T.label))}}
- p.append(h('h3',{style:'color:#79b8ff'},'Deployment'),h('div',{class:'pi',draggable:'true',title:'A box that represents one deployed application (a host, pod or build). Components placed inside share its instances, its deployment state and its faults.\n(click to add, or drag onto the canvas)',
-  ondragstart:ev=>ev.dataTransfer.setData('text/plain','group'),onclick:()=>{const W=svg.clientWidth,H=svg.clientHeight,o=(addN++%6)*26;const g=addGroup(M,(W/2-vp.x)/vp.k-130+o,(H/2-vp.y)/vp.k-75+o);structural();select({t:'g',id:g.id})}},h('i',null,'🗂'),'App / host group'))}
+ p.append(h('h3',{style:'color:#79b8ff'},'Deployment'),h('div',{class:'pi',draggable:'true',title:'A box that represents one application. It is deployed as clusters (shards), each with server groups (builds), each with instances in regions. Services placed inside run once per server group.\n(click to add, or drag onto the canvas)',
+  ondragstart:ev=>ev.dataTransfer.setData('text/plain','group'),onclick:()=>{const W=svg.clientWidth,H=svg.clientHeight,o=(addN++%6)*26;const g=addGroup(M,(W/2-vp.x)/vp.k-150+o,(H/2-vp.y)/vp.k-100+o);structural();select({t:'g',id:g.id})}},h('i',null,'🗂'),'Application (clusters, server groups)'))}
 
 /* ---------- inspector ---------- */
 function renderInsp(){insp.innerHTML='';if(sel){if(sel.t==='n'){const n=nodeById(sel.id);if(n)return inspNode(n)}else if(sel.t==='g'){const g=groupById(sel.id);if(g)return inspGroup(g)}else{const e=edgeById(sel.id);if(e)return inspEdge(e)}sel=null}inspSystem()}
 function onCfg(){refreshStatic();save();sig={}}
 function onFault(n){return()=>{sim.syncFaults();refreshStatic();save();markOnce('⚡ '+n)}}
-function trigger(id,what){const n=nodeById(id);if(!n)return;const r=sim.rt(n);
- if(what==='crash')sim.crash(n);else if(what==='errOnce'){r.once++;sim.log('fault',n.name+': next request will fail')}else if(what==='rebalance')sim.rebalance(n);
- else if(what==='flush'){if(r.map)r.map.clear();sim.log('fault',n.name+': cache flushed')}else if(what==='burst'){sim.burst(n,50);sim.log('fault',n.name+': burst of 50 requests')}
+function trigger(id,what){const n=nodeById(id);if(!n)return;const xs=sim.reps(n);
+ if(what==='crash')for(const x of xs)sim.crash(x);else if(what==='errOnce'){sim.rt(xs[0]).once++;sim.log('fault',n.name+': next request will fail')}else if(what==='rebalance')sim.rebalance(n);
+ else if(what==='flush'){for(const x of xs){const r=sim.rt(x);if(r.map)r.map.clear()}sim.log('fault',n.name+': cache flushed')}else if(what==='burst'){sim.burst(n,50);sim.log('fault',n.name+': burst of 50 requests')}
  else if(what==='fire')sim.fireNow(n);
  markOnce('⚡ '+n.name+' '+what)}
-function gtrigger(id,what,arg){const g=groupById(id);if(!g)return;
- if(what==='kill')sim.killOne(g);else if(what==='restore'){g.fault.instDown=0;sim.syncFaults()}else if(what==='rolling')sim.rolling(g);
- else if(what==='cutover'){if(!groupById(arg.from))return;sim.cutover(id,arg.from,arg.mode)}
- if(what!=='cutover')markOnce('⚡ '+g.name+' '+what);refreshStatic();updGroups();save()}
+/* triggers on a server group ("id" is the server group's id) */
+function gtrigger(id,what,arg){const s=sim.sg(id);if(!s)return;
+ if(what==='kill')sim.killOne(s);else if(what==='restore'){s.fault.instDown=0;for(const r of s.regions)r.fault.down=false;sim.syncFaults()}else if(what==='rolling')sim.rolling(s);
+ else if(what==='cutover'){if(!sim.sg(arg.from))return;sim.cutover(id,arg.from,arg.mode)}
+ if(what!=='cutover')markOnce('⚡ '+sim.gl(s)+' '+what);refreshStatic();updGroups();save()}
 /* send exactly one message. If the clock is paused, run in slow motion with every source held until it settles, then pause again. */
 function sendOne(n){if(!n)return;if(!M.edges.some(e=>e.from===n.id))return toast(n.name+' is not connected to anything yet');
  const tr=sim.emitOne(n);oneTr=tr;
@@ -1420,10 +1694,13 @@ function inspNode(n){const T=TYPES[n.type],k=T.kind;
  const nm=h('input',{spellcheck:'false'});nm.value=n.name;nm.oninput=()=>{n.name=nm.value;refreshStatic();save()};
  insp.append(h('div',{class:'hd'},h('span',{style:'font-size:18px'},T.icon),nm,h('button',{class:'sm warn',onclick:delSel},'Delete')),h('div',{class:'muted',style:'margin:5px 0 2px;font-size:12px'},T.label+' — '+T.desc));
  if(k==='note')return;
- const grp=n.group&&groupById(n.group);if(grp)insp.append(h('div',{class:'btns'},h('button',{class:'sm',onclick:()=>select({t:'g',id:grp.id})},'🗂 Runs inside '+grp.name+' — open the app group')));
+ const grp=n.group&&groupById(n.group);if(grp)insp.append(h('div',{class:'btns'},h('button',{class:'sm',onclick:()=>select({t:'g',id:grp.id})},'🗂 Runs inside '+grp.name+(allSgs(grp).length>1&&REPL[k]?' — one copy per server group ('+allSgs(grp).length+')':'')+' — open the application')));
  let cf=CF[k];if(n.type==='cron'){const sched=n.cfg.mode==='schedule';cf=[CF.sched[0]].concat(sched?CF.sched.slice(1):CF.producer.slice(0,5),CF.producer.slice(5))}
- insp.append(sec('Configuration',cf.map(f=>field(n.cfg,f,key=>{onCfg();if(key==='mode'){sim.rt(n).last=null;renderInsp()}})),true));
- if(k==='service'){insp.append(sec('Actions — performed in this order',[actionsEditor(n)],true));
+ insp.append(sec('Configuration',cf.map(f=>field(n.cfg,f,key=>{onCfg();if(key==='mode'){sim.view(n).last=null;renderInsp()}})),true));
+ if(k==='store')insp.append(sec('Tables — connection points',[tablesEditor(n)],true));
+ if(k==='service'){const pin=M.edges.filter(e=>e.to===n.id&&e.cfg.poll);
+  if(pin.length)insp.append(h('div',{class:'btns'},pin.map(e=>{const db=nodeById(e.from),T=tableOf(db,e.cfg.table);return h('button',{class:'sm',onclick:()=>select({t:'e',id:e.id})},'⟳ Polls '+db.name+(T?' · '+T.name:'')+' every '+e.cfg.poll.everyMs+' ms × '+e.cfg.poll.batch+' — edit')})));
+  insp.append(sec('Actions — performed in this order',[actionsEditor(n)],true));
   const hasOb=n.cfg.actions.some(a=>{const e=edgeById(a.edge);return a.outbox&&e&&MSGK[KIND(nodeById(e.to))]}),obS=h('p',{class:'muted',style:'margin:2px 0 6px;font-size:12px'}),ibS=h('p',{class:'muted',style:'margin:2px 0 6px;font-size:12px'});
   const sums=()=>{const c=n.cfg;obS.textContent=!hasOb?'No action publishes through the outbox yet. Open a "publish →" action above and tick "Via transactional outbox".':c.outboxMode==='cdc'?'Rows are picked up from the database log within a few ms of commit.':'Every '+c.outboxPollMs+' ms the relay reads up to '+c.outboxBatch+' rows and publishes them: at most '+f1(c.outboxBatch/c.outboxPollMs*1000)+' msg/s, and an event waits up to '+ms(c.outboxPollMs)+' before it is even looked at.';
    ibS.textContent=!c.inbox?'Off: each message is handled while the sender waits.':'Every '+c.inboxPollMs+' ms the poller takes up to '+c.inboxBatch+' stored rows: at most '+f1(c.inboxBatch/c.inboxPollMs*1000)+' msg/s. The sender is acknowledged as soon as the row is stored.'};sums();
@@ -1437,37 +1714,85 @@ function inspNode(n){const T=TYPES[n.type],k=T.kind;
  insp.append(sec('⚡ Inject faults',[FF[k].map(f=>field(n.fault,f,onFault(n.name))),h('div',{class:'btns'},bs)],true,'flt'));
  insp.append(sec('Live metrics',[h('div',{id:'live'}),h('canvas',{id:'spark',style:'width:100%;height:60px;margin-top:6px'})],true));
  if(k==='producer')insp.append(sec('Last single message',[h('div',{id:'one'})],true));liveInsp()}
-function inspGroup(g){const nm=h('input',{spellcheck:'false'});nm.value=g.name;nm.oninput=()=>{g.name=nm.value;updGroups();save()};
- const mem=M.nodes.filter(n=>n.group===g.id),others=M.groups.filter(x=>x!==g);
- const gch=()=>{sim.syncFaults();refreshStatic();updGroups();save();sig={}};
+function tablesEditor(n){const box=h('div'),ts=n.cfg.tables||(n.cfg.tables=[]);
+ box.append(h('p',{class:'muted',style:'margin:2px 0 6px;font-size:12px'},ts.length?'Each table is a row under the node and its own connection point. Drop a connection from a service onto a row to write to that table. A work table has a ● on its right: drag it to the polling loop that reads the table.':'No tables: the database is a single connection point. Add tables to model an inbox, an outbox or a de-dupe table that services write to and polling loops read from.'));
+ for(const t of ts){const nm=h('input',{type:'text',spellcheck:'false',style:'flex:1;min-width:0'});nm.value=t.name;nm.oninput=()=>{t.name=nm.value.trim()||'table';refreshStatic();updNodes();save()};
+  const kd=h('select',{style:'width:156px'},Object.keys(TKIND).map(v=>h('option',{value:v},TKIND[v])));kd.value=t.kind;
+  kd.onchange=()=>{t.kind=kd.value;if(t.kind!=='queue')for(const e of M.edges.filter(e=>e.from===n.id&&e.cfg.table===t.id))removeEdge(M,e.id);structural();renderInsp()};
+  box.append(h('div',{style:'display:flex;gap:5px;align-items:center;margin:3px 0'},nm,kd,h('button',{class:'sm warn',title:'Remove this table',onclick:()=>{removeTable(M,n,t.id);structural();renderInsp()}},'✕')))}
+ const add=(label,name,kind)=>h('button',{class:'sm',onclick:()=>{let nm=name,i=2;while(ts.some(t=>t.name===nm))nm=name+'-'+(i++);addTable(M,n,nm,kind);structural();renderInsp()}},label);
+ box.append(h('div',{class:'btns'},add('+ inbox','inbox','queue'),add('+ outbox','outbox','queue'),add('+ de-dupe','dedupe','dedupe'),add('+ data table','data','data')));return box}
+function tableSel(e,db,done){const ts=(KIND(db)==='store'&&db.cfg.tables)||[];if(!ts.length)return null;
+ const s=h('select',null,h('option',{value:''},'(no specific table)'),ts.map(t=>h('option',{value:t.id},t.name+' — '+TKIND[t.kind])));s.value=e.cfg.table||'';
+ s.onchange=()=>{if(s.value)e.cfg.table=s.value;else delete e.cfg.table;done()};const T=tableOf(db,e.cfg.table),note=t=>h('p',{class:'muted',style:'font-size:12px;margin:2px 0 6px'},t);
+ return[h('label',{class:'f',title:'Which table of '+db.name+' this write goes to'},h('span',null,'Table'),s),
+  T&&T.kind==='dedupe'?note('Inserts this message\'s id under a unique key. If the id is already there, the handler stops and the message is acknowledged as a duplicate. Tick "In DB transaction" here and on the real work so the two commit together.'):T&&T.kind==='queue'?note('Inserts a row that waits for the polling loop connected to this table.'):null]}
+function inspGroup(g){const c=curCluster(g),mc=g.clusters.length>1,nm=h('input',{spellcheck:'false'});nm.value=g.name;nm.oninput=()=>{g.name=nm.value;M.rev++;updGroups();save()};
+ const mem=M.nodes.filter(n=>n.group===g.id),gch=()=>{sim.syncFaults();refreshStatic();updGroups();save();sig={}};
+ const restruct=()=>{for(const k of g.clusters)fixWeights(k);structural();resetSim();refresh();renderInsp();toast('Deployment layout changed — simulation restarted')};
+ const txt=(obj,key,ph)=>{const i=h('input',{type:'text',spellcheck:'false',placeholder:ph});i.value=obj[key];i.oninput=()=>{obj[key]=i.value.trim()||ph;M.rev++;updGroups();save()};return i};
+ const copySg=s=>({name:s.name,weight:s.cfg.weight,stopped:s.cfg.stopped,consume:s.cfg.consume,regions:s.regions.map(r=>[r.name,r.instances])});
+ const sub=t=>h('div',{style:'font-size:12px;font-weight:600;margin:9px 0 3px'},t);
  insp.append(h('div',{class:'hd'},h('span',{style:'font-size:18px'},'🗂'),nm,h('button',{class:'sm warn',title:'Removes the box only; the components stay',onclick:delSel},'Delete')),
-  h('div',{class:'muted',style:'margin:5px 0 2px;font-size:12px'},'App / host group — one deployed application. Components inside the box share its instances, deployment state and faults. Drag components in or out; drag the title bar to move it, the corner to resize.'),
-  h('div',{style:'font-size:12px;margin-top:4px'},mem.length?'Inside: '+mem.map(n=>n.name).join(', '):'Empty — drag components into the box.'));
- insp.append(sec('Configuration',GF.map(f=>field(g.cfg,f,gch)),true));
- const wr=h('input',{type:'range',min:0,max:100,step:5,id:'gw'}),wo=h('output',{id:'gwo'});wr.value=sim.gW(g);wo.textContent=Math.round(sim.gW(g))+'%';
- wr.oninput=()=>{sim.cancelCutover();g.fault.weight=+wr.value;wo.textContent=wr.value+'%';gch()};
- const st=h('input',{type:'checkbox',id:'gst'});st.checked=sim.gStopped(g);st.onchange=()=>{sim.cancelCutover();g.fault.stopped=st.checked;gch()};
- const kids=[h('label',{class:'f',title:'Live override of the baseline share. "Heal all" returns to the baseline.'},h('span',null,'Traffic share now'),h('div',{class:'rng'},wr,wo)),h('label',{class:'f'},h('span',null,'Stopped now'),st)];
- if(others.length){if(!coFrom[g.id]||!groupById(coFrom[g.id])){const dist=o=>Math.hypot(o.x-g.x,o.y-g.y);coFrom[g.id]=(others.filter(o=>o.name===g.name).sort((a,b)=>dist(a)-dist(b))[0]||others.slice().sort((a,b)=>dist(a)-dist(b))[0]).id}
-  const fs=h('select',null,others.map(o=>h('option',{value:o.id},o.name+(o.cfg.version?' · '+o.cfg.version:''))));fs.value=coFrom[g.id];fs.onchange=()=>{coFrom[g.id]=fs.value};
-  const cb=(label,mode,title)=>h('button',{class:'sm'+(mode==='rollback'?'':' pri'),title,onclick:()=>{gtrigger(g.id,'cutover',{from:coFrom[g.id],mode});if(!running)setRun(true)}},label);
-  kids.push(h('label',{class:'f',title:'The version currently taking the traffic'},h('span',null,'Take over from'),fs),
-   h('div',{class:'btns'},cb('Canary','canary','Shift traffic to this app in steps. After each step its own error rate is checked; above the limit, everything rolls back automatically.'),
-    cb('Blue/green','bluegreen','Both versions run side by side; all traffic switches at once. Rollback is instant, but a bad build hits every user.'),
-    cb('Highlander','highlander','There can be only one: the old version is stopped first, then this one starts. Never two versions live at once, at the price of a gap with nothing serving.'),
-    cb('A/B 50/50','ab','Split traffic evenly. Set the load balancer to "Sticky by key" so each user always lands on the same side.'),
-    cb('Roll back','rollback','Return both apps to their baseline traffic share and state.')),
+  h('div',{class:'muted',style:'margin:5px 0 2px;font-size:12px'},'Application, deployed as clusters (shards) → server groups (builds) → regions (data centres with instances). Services, proxies and caches inside the box run once per server group; a scheduler inside runs once for the whole application. Databases and brokers are never part of an application.'),
+  h('div',{style:'font-size:12px;margin-top:4px'},mem.length?'Inside: '+mem.map(n=>n.name).join(', '):'Empty — drag services into the box.'));
+ /* clusters: one tab each */
+ const ck=[h('div',{class:'btns'},g.clusters.map(k=>h('button',{class:'sm'+(k===c?' pri':''),onclick:()=>{gTab[g.id]=k.id;updGroups();renderInsp()}},k.name)),
+   h('button',{class:'sm',title:'Add a cluster (shard) laid out like this one',onclick:()=>{const k=mkCluster(M,{name:'cluster-'+(g.clusters.length+1),sgs:c.sgs.map(copySg)});g.clusters.push(k);gTab[g.id]=k.id;restruct()}},'+ cluster')),
+  h('label',{class:'f'},h('span',null,'Cluster name'),txt(c,'name','cluster')),
+  h('p',{class:'muted',style:'font-size:12px;margin:2px 0 6px'},mc?'Requests are sharded by key: a key always lands on the same one of the '+g.clusters.length+' clusters. Each cluster has its own server groups and its own 100% of traffic.':'One cluster serves every key. Add clusters to shard by key.'),
+  field(c.fault,['down','⚡ This cluster is down','bool',null,'Every server group in the cluster stops serving, so its share of the keys fails.'],()=>{gch();markOnce('⚡ '+g.name+' '+c.name)})];
+ if(mc)ck.push(h('div',{class:'btns'},h('button',{class:'sm warn',onclick:()=>{g.clusters=g.clusters.filter(k=>k!==c);delete gTab[g.id];restruct()}},'Delete cluster '+c.name)));
+ insp.append(sec('Clusters (shards)',ck,true));
+ /* server groups of the selected cluster: one section each */
+ const sk=[];
+ c.sgs.forEach(s=>{const open=openActs.has(s.id)||c.sgs.length===1;
+  const wr=h('input',{type:'range',min:0,max:100,step:5}),wo=h('output',null,s.cfg.weight+'%');wr.value=s.cfg.weight;wr.disabled=c.sgs.length<2;
+  wr.oninput=()=>{s.cfg.weight=+wr.value;fixWeights(c,s);wo.textContent=s.cfg.weight+'%';sim.cancelCutover();for(const x of c.sgs)x.fault.weight=null;gch()};wr.onchange=()=>renderInsp();
+  const regs=h('div');s.regions.forEach(r=>{const ni=txt(r,'name','region');ni.style.cssText='flex:1;min-width:0';
+   const ii=h('input',{type:'number',min:1,max:200,step:1,style:'width:56px',title:'Instances in this region'});ii.value=r.instances;ii.oninput=()=>{const v=parseInt(ii.value,10);if(v>=1){r.instances=Math.min(200,v);gch()}};
+   const dn=h('input',{type:'checkbox'});dn.checked=r.fault.down;dn.onchange=()=>{r.fault.down=dn.checked;gch();markOnce((dn.checked?'⚡ ':'✚ ')+r.name+(dn.checked?' lost':' back'));if(!running)setRun(true)};
+   regs.append(h('div',{style:'display:flex;gap:5px;align-items:center;margin:3px 0'},ni,ii,h('label',{style:'display:flex;gap:3px;align-items:center;font-size:11.5px;color:var(--wa)',title:'⚡ Region down: every instance in it is lost'},dn,'down'),
+    s.regions.length>1?h('button',{class:'sm warn',title:'Remove this region',onclick:()=>{s.regions=s.regions.filter(x=>x!==r);M.rev++;gch();renderInsp()}},'✕'):null))});
+  const b=(label,what,title)=>h('button',{class:'sm',title:title||'',onclick:()=>{gtrigger(s.id,what);if(!running)setRun(true);renderInsp()}},label);
+  const det=h('details',{class:'act',open},h('summary',null,h('span',{class:'tt'},s.name),h('span',{class:'chip','data-sgw':s.id},''),s.cfg.consume==='own'?h('span',{class:'chip w'},'A/B'):null),
+   h('div',{class:'bd'},h('label',{class:'f'},h('span',null,'Name (build / version)'),txt(s,'name','main')),
+    h('label',{class:'f',title:'Baseline share of this cluster\'s traffic. The server groups of a cluster always add up to 100%: moving one slider rebalances the others.'},h('span',null,'Traffic share',h('i',{class:'q'},'?')),h('div',{class:'rng'},wr,wo)),
+    SGF.map(f=>field(s.cfg,f,key=>{M.rev++;gch();if(key==='consume')renderInsp()})),
+    sub('Regions (data centres): name · instances'),regs,
+    h('div',{class:'btns'},h('button',{class:'sm',onclick:()=>{s.regions.push(mkRegion(M,'region-'+(s.regions.length+1),1));M.rev++;gch();renderInsp()}},'+ region')),
+    sub('⚡ Faults on this server group'),SFF.map(f=>field(s.fault,f,()=>{gch();markOnce('⚡ '+sim.gl(s))})),
+    h('div',{class:'btns'},b('💥 Kill one instance','kill','One host dies: its in-flight work is lost and capacity drops'),b('Restore instances','restore'),b('Rolling restart','rolling','Restart the instances one at a time'),
+     h('button',{class:'sm',onclick:()=>{sim.cancelCutover();s.fault=clone(SFDEF);for(const r of s.regions)r.fault=clone(RFDEF);gch();renderInsp()}},'Clear faults'),
+     c.sgs.length>1?h('button',{class:'sm warn',onclick:()=>{c.sgs=c.sgs.filter(x=>x!==s);restruct()}},'Delete server group'):null)));
+  det.addEventListener('toggle',()=>{if(det.open)openActs.add(s.id);else openActs.delete(s.id)});sk.push(det)});
+ sk.push(h('div',{class:'btns'},h('button',{class:'sm',title:'Add another build next to the existing ones, at 0% traffic',onclick:()=>{const o=copySg(c.sgs[c.sgs.length-1]);o.name='v'+(c.sgs.length+1);o.weight=0;o.consume='shared';const s=mkSg(M,o);c.sgs.push(s);openActs.add(s.id);restruct()}},'+ server group')));
+ insp.append(sec('Server groups of '+c.name+' — traffic always totals 100%',sk,true));
+ /* cut-over between two server groups of this cluster */
+ const kids=[];
+ if(c.sgs.length>1){let cs=coSel[c.id];const has=id=>c.sgs.some(s=>s.id===id);
+  if(!cs||!has(cs.from)||!has(cs.to)||cs.from===cs.to){const byW=c.sgs.slice().sort((a,b)=>sim.gW(b)-sim.gW(a));cs=coSel[c.id]={from:byW[0].id,to:byW[byW.length-1].id}}
+  const pick=key=>{const s=h('select',null,c.sgs.map(o=>h('option',{value:o.id},o.name)));s.value=cs[key];s.onchange=()=>{cs[key]=s.value};return s};
+  const cb=(label,mode,title)=>h('button',{class:'sm'+(mode==='rollback'?'':' pri'),title,onclick:()=>{if(cs.from===cs.to)return toast('Choose two different server groups');gtrigger(cs.to,'cutover',{from:cs.from,mode});if(!running)setRun(true)}},label);
+  kids.push(h('label',{class:'f',title:'The build taking the traffic now'},h('span',null,'From'),pick('from')),h('label',{class:'f',title:'The new build'},h('span',null,'To'),pick('to')),
+   h('div',{class:'btns'},cb('Canary','canary','Shift traffic to the new build in steps. After each step its own error rate is checked; above the limit, everything rolls back automatically.'),
+    cb('Blue/green','bluegreen','Both builds run side by side; all traffic switches at once. Rollback is instant, but a bad build hits every user.'),
+    cb('Highlander','highlander','There can be only one: the old build is stopped first, then the new one starts. Never two builds live at once, at the price of a gap with nothing serving.'),
+    cb('A/B 50/50','ab','Split the traffic evenly. Turn on "Pin each key to one server group" under Application settings so each user always lands on the same side.'),
+    cb('Roll back','rollback','Return both server groups to their baseline traffic share and state.')),
    GCF.map(f=>field(g.cfg,f,()=>save())))}
- else kids.push(h('p',{class:'muted',style:'font-size:12px'},'Add a second app group for the other version (put a copy of the service inside it, behind the same load balancer, queue or consumer group id) to cut traffic over between them.'));
- insp.append(sec('Deploy / cut over',kids,true));
- const b=(label,what,title)=>h('button',{class:'sm',title:title||'',onclick:()=>{gtrigger(g.id,what);if(!running)setRun(true);renderInsp()}},label);
- insp.append(sec('⚡ Inject faults',[GFF.map(f=>field(g.fault,f,()=>{if(g.fault.instDown>sim.gN(g))g.fault.instDown=sim.gN(g);gch();markOnce('⚡ '+g.name)})),
-  h('div',{class:'btns'},b('💥 Kill one instance','kill','One host dies: its in-flight work is lost and capacity drops'),b('Restore instances','restore'),b('Rolling restart','rolling','Restart the instances one at a time'),
-   h('button',{class:'sm',onclick:()=>{sim.cancelCutover();g.fault=clone(GFDEF);gch();renderInsp();markOnce('healed '+g.name)}},'Clear faults'))],true,'flt'));
+ else kids.push(h('p',{class:'muted',style:'font-size:12px'},'Add a second server group (the new build) to this cluster to cut traffic over between them.'));
+ insp.append(sec('Deploy / cut over'+(mc?' in '+c.name:''),kids,c.sgs.length>1),sec('Application settings',GF.map(f=>field(g.cfg,f,gch)),false));
+ /* application-wide faults, including losing a region everywhere */
+ const rn=[...new Set(allSgs(g).flatMap(s=>s.regions.map(r=>r.name)))];
+ const regBtn=name=>{const all=allSgs(g).flatMap(s=>s.regions.filter(r=>r.name===name)),down=all.every(r=>r.fault.down);
+  return h('button',{class:'sm',title:'Applies to this region in every cluster and server group of the application',onclick:()=>{for(const r of all)r.fault.down=!down;gch();markOnce((down?'✚ ':'⚡ ')+name+(down?' back':' lost'));if(!running)setRun(true);renderInsp()}},(down?'Restore region ':'💥 Lose region ')+name)};
+ insp.append(sec('⚡ Application-wide faults',[GFF.map(f=>field(g.fault,f,()=>{gch();markOnce('⚡ '+g.name)})),h('div',{class:'btns'},rn.map(regBtn),
+  h('button',{class:'sm',onclick:()=>{sim.cancelCutover();for(const [o,d] of depFaults())if(o===g||g.clusters.some(k=>k===o||k.sgs.some(s=>s===o||s.regions.includes(o))))o.fault=clone(d);gch();renderInsp();markOnce('healed '+g.name)}},'Clear every fault here'))],true,'flt'));
  insp.append(sec('Live metrics',[h('div',{id:'live'})],true));liveInsp()}
 function actionsEditor(n){const box=h('div'),acts=n.cfg.actions;
  if(!acts.length)box.append(h('p',{class:'muted'},'No actions yet. Drag from this node\'s ● port to a database, topic, API or another service. Each connection becomes an action here; you can then order them, wrap them in a transaction and choose what happens on failure.'));
- acts.forEach((a,i)=>{const e=edgeById(a.edge),dst=e&&nodeById(e.to);if(!dst)return;const dk=KIND(dst);
+ acts.forEach((a,i)=>{const e=edgeById(a.edge),dst=e&&nodeById(e.to);if(!dst)return;const dk=KIND(dst),T=tableOf(dst,e.cfg.table);
   const up=()=>{refreshStatic();save();sig={};renderInsp()};
   const fs=[['op','Operation','sel',{write:'Command / write',read:'Query / read'},'Queries have no side effects and are ignored by the consistency audit.']];
   if(dk==='store'&&dst.cfg.supportsTx)fs.push(['tx','In DB transaction','bool',null,'The write is only committed if the whole handler succeeds; otherwise it is rolled back. Commit happens after the last action.']);
@@ -1481,28 +1806,32 @@ function actionsEditor(n){const box=h('div'),acts=n.cfg.actions;
   if(a.onError!=='abort')chips.push(h('span',{class:'chip w'},a.onError==='continue'?'best effort':'saga'));if(a.retries>0)chips.push(h('span',{class:'chip'},'retry×'+a.retries));if(a.breaker)chips.push(h('span',{class:'chip g'},'breaker'));if(a.failPct>0)chips.push(h('span',{class:'chip r'},'⚡'+a.failPct+'%'));
   const mv=d=>ev=>{ev.preventDefault();ev.stopPropagation();const j=i+d;if(j<0||j>=acts.length)return;acts.splice(j,0,acts.splice(i,1)[0]);up()};
   const det=h('details',{class:'act',open:openActs.has(a.id)},
-   h('summary',null,h('span',{class:'ix'},i+1),h('span',{class:'tt'},(MSGK[dk]?'publish → ':dk==='store'||dk==='cache'?(a.op==='read'?'read ← ':'write → '):'call → ')+dst.name),chips,
+   h('summary',null,h('span',{class:'ix'},i+1),h('span',{class:'tt'},(MSGK[dk]?'publish → ':dk==='store'||dk==='cache'?(a.op==='read'?'read ← ':'write → '):'call → ')+dst.name+(T?' · '+T.name:'')),chips,
     h('button',{class:'sm',title:'Move earlier',onclick:mv(-1)},'↑'),h('button',{class:'sm',title:'Move later',onclick:mv(1)},'↓')),
-   h('div',{class:'bd'},fs.map(f=>field(a,f,key=>{refreshStatic();save();sig={};if(key!=='timeout'&&key!=='retries'&&key!=='backoff'&&key!=='failPct')renderInsp()})),
-    h('div',{class:'btns'},h('button',{class:'sm',onclick:()=>{sim.rt(n).actOnce[a.id]=1;toast('The next run of this action will fail');if(!running)setRun(true)}},'Fail this action once'),
+   h('div',{class:'bd'},tableSel(e,dst,()=>{structural();renderInsp()}),fs.map(f=>field(a,f,key=>{refreshStatic();save();sig={};if(key!=='timeout'&&key!=='retries'&&key!=='backoff'&&key!=='failPct')renderInsp()})),
+    h('div',{class:'btns'},h('button',{class:'sm',onclick:()=>{for(const x of sim.reps(n))sim.rt(x).actOnce[a.id]=1;toast('The next run of this action will fail');if(!running)setRun(true)}},'Fail this action once'),
      h('button',{class:'sm warn',onclick:()=>{removeEdge(M,a.edge);structural();renderInsp()}},'Remove'))));
   det.addEventListener('toggle',()=>{if(det.open)openActs.add(a.id);else openActs.delete(a.id)});box.append(det)});
  return box}
 function inspEdge(e){const a=nodeById(e.from),b=nodeById(e.to),ka=KIND(a);
  insp.append(h('div',{class:'hd'},h('b',{style:'flex:1'},a.name+'  →  '+b.name),h('button',{class:'sm warn',onclick:delSel},'Delete')),
-  h('div',{class:'muted',style:'margin:5px 0 2px;font-size:12px'},MSGK[ka]?(ka==='pubsub'?'Push delivery to a subscriber.':'Subscription: '+b.name+' consumes from '+a.name+'.'):'Network link. Faults here happen between the two nodes, whatever state each node is in.'));
+  h('div',{class:'muted',style:'margin:5px 0 2px;font-size:12px'},e.cfg.poll?'Polling loop: '+b.name+' reads the "'+(tableOf(a,e.cfg.table)||{name:'?'}).name+'" table of '+a.name+' in batches. Each row it reads runs '+b.name+'\'s actions.':MSGK[ka]?(ka==='pubsub'?'Push delivery to a subscriber.':'Subscription: '+b.name+' consumes from '+a.name+'.'):'Network link. Faults here happen between the two nodes, whatever state each node is in.'));
  if(ka==='service')insp.append(h('div',{class:'btns'},h('button',{class:'sm',onclick:()=>{const act=a.cfg.actions.find(x=>x.edge===e.id);if(act)openActs.add(act.id);select({t:'n',id:a.id})}},'Edit this action (order, transaction, error handling) in '+a.name)));
  insp.append(sec('Link',[field(e.cfg,['latency','One-way latency (ms)','num',P(0,10000,1)],onCfg)],true));
+ if(e.cfg.poll){const p=e.cfg.poll,sum=h('p',{class:'muted',style:'margin:2px 0 6px;font-size:12px'}),upd=()=>{sum.textContent='Every '+p.everyMs+' ms the loop reads up to '+p.batch+' rows: at most '+f1(p.batch/p.everyMs*1000)+' rows/s, and a new row waits up to '+ms(p.everyMs)+' before it is even looked at.'};upd();
+  insp.append(sec('Polling — interval and batch',[sum,POLLF.map(f=>field(p,f,()=>{onCfg();upd()}))],true))}
  if(e.cfg.sub)insp.append(sec('Subscription / consumer group',(ka==='queue'?SUBF:SUBF.slice(0,5).concat([GRPF])).map(f=>field(e.cfg.sub,f,()=>{onCfg();sim.syncFaults()})),true));
  insp.append(sec('⚡ Network faults',[EFF.map(f=>field(e.fault,f,onFault(a.name+'→'+b.name))),h('div',{class:'btns'},h('button',{class:'sm',onclick:()=>{e.fault=clone(EFDEF);refreshStatic();save();renderInsp()}},'Clear faults'))],true,'flt'));
  insp.append(sec('Live metrics',[h('div',{id:'live'})],true));liveInsp()}
-function captureFaults(){const f={};for(const n of M.nodes){const d=FDEF[KIND(n)],o={};for(const k in d)if(n.fault[k]!==d[k])o[k]=n.fault[k];if(Object.keys(o).length)f[n.id]=o}
- for(const e of M.edges){const o={};for(const k in EFDEF)if(e.fault[k]!==EFDEF[k])o[k]=e.fault[k];if(Object.keys(o).length)f[e.id]=o}
- for(const g of M.groups){const o={};for(const k in GFDEF)if(g.fault[k]!==GFDEF[k])o[k]=g.fault[k];if(Object.keys(o).length)f[g.id]=o}return f}
-function healAll(quiet){healTok++;sim.cancelCutover();for(const n of M.nodes)n.fault=clone(FDEF[KIND(n)]);for(const e of M.edges)e.fault=clone(EFDEF);for(const g of M.groups)g.fault=clone(GFDEF);sim.syncFaults();updGroups();refreshStatic();save();
+/* everything in the deployment hierarchy that can carry a fault: application, cluster, server group, region */
+function depFaults(){const o=[];for(const g of M.groups){o.push([g,GFDEF]);for(const c of g.clusters){o.push([c,CFDEF]);for(const s of c.sgs){o.push([s,SFDEF]);for(const r of s.regions)o.push([r,RFDEF])}}}return o}
+function depById(id){const x=depFaults().find(x=>x[0].id===id);return x&&x[0]}
+function captureFaults(){const f={},cap=(o,d)=>{const x={};for(const k in d)if(o.fault[k]!==d[k])x[k]=o.fault[k];if(Object.keys(x).length)f[o.id]=x};
+ for(const n of M.nodes)cap(n,FDEF[KIND(n)]);for(const e of M.edges)cap(e,EFDEF);for(const [o,d] of depFaults())cap(o,d);return f}
+function healAll(quiet){healTok++;sim.cancelCutover();for(const n of M.nodes)n.fault=clone(FDEF[KIND(n)]);for(const e of M.edges)e.fault=clone(EFDEF);for(const [o,d] of depFaults())o.fault=clone(d);sim.syncFaults();updGroups();refreshStatic();save();
  if(!quiet){sim.mark('✚ healed');sim.log('ok','All faults cleared');if(sel)renderInsp()}}
 function applyScenario(s){healAll(true);let miss=0;
- for(const id in s.faults){const t=nodeById(id)||edgeById(id)||groupById(id);if(t)Object.assign(t.fault,s.faults[id]);else miss++}
+ for(const id in s.faults){const t=nodeById(id)||edgeById(id)||depById(id);if(t)Object.assign(t.fault,s.faults[id]);else miss++}
  sim.syncFaults();
  for(const tg of s.triggers||[]){if(tg.group)gtrigger(tg.group,tg.what,tg);else trigger(tg.node,tg.what)}
  sim.syncFaults();refreshStatic();save();sim.mark('⚡ '+s.name);sim.log('fault','Scenario applied: '+s.name);
@@ -1526,13 +1855,17 @@ function inspSystem(){const d=h('textarea',{id:'desc',spellcheck:'false',placeho
    h('div',null,'• Apply a scenario, watch the dashboard, then Heal and watch recovery.'),
    h('div',null,'• The Consistency audit tab tracks every request end to end.')))}
 function liveInsp(){const box=$('#live');if(!box||!sel)return;let rows=[];
- if(sel.t==='g'){const g=groupById(sel.id);if(!g)return;let i=0,e=0,w=0,b=0;for(const n of M.nodes)if(n.group===g.id&&KIND(n)==='service'){const r=sim.rt(n);i+=r.rate.in;e+=r.rate.err;w+=sim.workers(n);b+=r.busy}
-  rows=[['State',gState(g)],['Instances up',sim.gLive(g)+' / '+sim.gN(g)],['Traffic share now',Math.round(sim.gW(g))+'%'],['Requests into its services',f1(i)+' per s'],['Errors from its services',f1(e)+' per s'+(i>0.2?' ('+pct(e/i)+')':'')],['Workers busy (all instances)',b+' / '+w]];
-  const wr=$('#gw'),st=$('#gst');if(wr&&document.activeElement!==wr){wr.value=sim.gW(g);$('#gwo').textContent=Math.round(sim.gW(g))+'%'}if(st)st.checked=sim.gStopped(g)}
- else if(sel.t==='n'){const n=nodeById(sel.id);if(!n)return;const r=sim.rt(n),c=r.c,k=KIND(n);
+ if(sel.t==='g'){const g=groupById(sel.id);if(!g)return;const c=curCluster(g);let ti=0,te=0;
+  for(const el of insp.querySelectorAll('[data-sgw]')){const s=sim.sg(el.dataset.sgw);if(!s)continue;const off=sim.gOff(s);el.textContent=off?sgState(s):Math.round(sim.gW(s))+'% · '+sgState(s);el.className='chip '+(off?'r':'g')}
+  for(const s of c.sgs){let i=0,e=0,w=0,b=0;for(const n of sim.members(s,'service')){const r=sim.view(n);i+=r.rate.in;e+=r.rate.err;w+=sim.workers(n);b+=r.busy}ti+=i;te+=e;
+   rows.push([s.name,(sim.gOff(s)?sgState(s):Math.round(sim.gW(s))+'% of traffic')+' · '+sim.gLive(s)+'/'+sim.gN(s)+' up'],['   requests / errors',f1(i)+' / '+f1(e)+' per s'+(i>0.2?' ('+pct(e/i)+')':'')],['   workers busy',b+' / '+w])}
+  rows.unshift(['Cluster shown',c.name+(g.clusters.length>1?' (1 of '+g.clusters.length+')':'')],['Into its services',f1(ti)+' per s, '+f1(te)+' failing'])}
+ else if(sel.t==='n'){const n=nodeById(sel.id);if(!n)return;const r=sim.view(n),c=r.c,k=KIND(n);
   if(k==='producer'){const o=$('#one');if(o){const tr=oneTr&&oneTr.src===n.id?oneTr:null,s=tr?tr.id+'|'+tr.ev.length+'|'+tr.final+'|'+tr.clientDone:'-';if(o.dataset.s!==s){o.dataset.s=s;o.innerHTML=tr?traceHtml(tr):'<p class="muted" style="font-size:12px;margin:2px 0">Press ▶ 1 on the node (or "Send one message" above) to push a single message through and see every hop it takes here. Tip: use "✋ Hold sources" to silence the automatic traffic first.</p>'}}
    if(n.cfg.mode==='schedule')rows.push(['Next batch in',n.fault.pause||sim.manual||sim.off(n)?'held':(sim.nextFire(n,r)/1000).toFixed(1)+' s'],['Last batch size',r.lastCount])}
   rows=rows.concat([['Received',c.in],['Succeeded',c.ok],['Failed',c.err]]);rows.push(['Rate in / ok / err',f1(r.rate.in)+' / '+f1(r.rate.ok)+' / '+f1(r.rate.err)+' per s'],['Latency p50 / p99',ms(r.p50)+' / '+ms(r.p99)]);
+  if(r.cl)r.cl.forEach((x,i)=>rows.push(['   copy in '+x.lbl,sim.off(x)?'not serving':f1(r.rs[i].rate.in)+' in / '+f1(r.rs[i].rate.err)+' err per s']));
+  if(k==='store')for(const t of n.cfg.tables||[]){const tb=r.tb&&r.tb[t.id];rows.push(['Table '+t.name,t.kind==='queue'?(tb?tb.rows.length:0)+' waiting · '+(tb?tb.fly:0)+' in progress · '+(tb?tb.done:0)+' done'+(tb&&tb.park?' · '+tb.park+' parked':''):(tb?tb.n:0)+(t.kind==='dedupe'?' message ids':' rows written')])}
   if(k==='service'){const cap=svcCap(n);rows.push(['Workers busy',r.busy+' / '+sim.workers(n)],['Queued',r.q.length+' / '+n.cfg.queueCap],['Est. capacity',f1(cap)+' req/s']);
    if(r.outbox.length||c.polls)rows.push(['Outbox rows waiting',r.outbox.length],['Oldest outbox row',r.outbox.length?ms(sim.t-r.outbox.peek().t)+' old':'–'],['Last relay batch',(r.obLastN|0)+' rows'+(r.obLast!=null?', '+ms(sim.t-r.obLast)+' ago':'')]);
    if(n.cfg.inbox)rows.push(['Inbox rows waiting',r.inbox.length],['Inbox rows in progress',r.ibFly],['Oldest inbox row',r.inbox.length?ms(sim.t-r.inbox.peek().t)+' old':'–'],['Last inbox batch',(r.ibLastN|0)+' rows']);
@@ -1541,20 +1874,24 @@ function liveInsp(){const box=$('#live');if(!box||!sel)return;let rows=[];
   if(k==='log'){const l=sim.lag(r);rows.push(['Consumer lag (max group)',l.lag],['In DLQ',l.dlq],['Consumer groups',r.groups.size])}
   if(k==='queue')rows.push(['Depth',r.ready.length],['In flight',r.infl]);
   if(k==='cache')rows.push(['Keys cached',r.map.size],['Hit ratio',pct((c.hit|0)/Math.max(1,(c.hit|0)+(c.miss|0)))]);
-  const L={rej:'Rejected (overload)',thr:'Throttled (429)',crash:'Crashes',dedup:'Duplicates suppressed',ooo:'Out-of-order handled',aerr:'Action failures',comp:'Compensations',compFail:'Compensation failures',polls:'Outbox relay polls',obPub:'Outbox rows published',relayRetry:'Outbox relay retries',ibIn:'Inbox rows stored',ibPolls:'Inbox polls',ibDone:'Inbox rows processed',ibRetry:'Inbox retries',ibPark:'Inbox rows parked',fires:'Batches released',dead:'Routed to a dead instance',redeliv:'Redeliveries',expired:'Expired (retention)',dlq:'In DLQ',stale:'Stale reads',w:'Writes applied',u:'  distinct',undo:'Writes undone',undeliv:'Undelivered',hit:'Cache hits',miss:'Cache misses'};
+  const L={rej:'Rejected (overload)',thr:'Throttled (429)',crash:'Crashes',dedup:'Duplicates suppressed',ooo:'Out-of-order handled',aerr:'Action failures',comp:'Compensations',compFail:'Compensation failures',polls:'Polls (relay / table)',reread:'Handled rows read again',obPub:'Outbox rows published',relayRetry:'Outbox relay retries',ibIn:'Inbox rows stored',ibPolls:'Inbox polls',ibDone:'Inbox rows processed',ibRetry:'Inbox retries',ibPark:'Inbox rows parked',fires:'Batches released',dead:'Routed to a dead instance',redeliv:'Redeliveries',expired:'Expired (retention)',dlq:'In DLQ',stale:'Stale reads',w:'Writes applied',u:'  distinct',undo:'Writes undone',undeliv:'Undelivered',hit:'Cache hits',miss:'Cache misses'};
   for(const key in L)if(c[key])rows.push([L[key],c[key]]);
   const cv=$('#spark');if(cv)chart(cv,'req/s',[{c:'#4c9aff',l:'in',get:d=>d[0]},{c:'#3fb950',l:'ok',get:d=>d[1]},{c:'#f85149',l:'err',get:d=>d[2]}],r.hist,null,120)}
- else{const e=edgeById(sel.id);if(!e)return;const s=sim.est(e);rows=[['Sent',s.sent],['Failed / lost',s.fail],['Dropped by network',s.drop],['Duplicated by network',s.dup],['Rate',f1(s.rate)+' per s'],['Failure rate',f1(s.frate)+' per s']]}
+ else{const e=edgeById(sel.id);if(!e)return;const s=sim.est(e);rows=[['Sent',s.sent],['Failed / lost',s.fail],['Dropped by network',s.drop],['Duplicated by network',s.dup],['Rate',f1(s.rate)+' per s'],['Failure rate',f1(s.frate)+' per s']];
+  if(e.cfg.poll){const ra=sim.rts.get(e.from),tb=ra&&ra.tb&&ra.tb[e.cfg.table];let last=null,lastN=0;if(tb)for(const key in tb.pe)if(key.split('@')[0]===e.id&&tb.pe[key].last!=null&&!(last>tb.pe[key].last)){last=tb.pe[key].last;lastN=tb.pe[key].lastN}
+   rows.unshift(['Rows waiting',tb?tb.rows.length:0],['Rows in progress',tb?tb.fly:0],['Oldest waiting row',tb&&tb.rows.length?ms(sim.t-tb.rows.peek().t)+' old':'–'],['Last batch',last==null?'–':lastN+' rows, '+ms(sim.t-last)+' ago'],['Rows done / parked',tb?tb.done+' / '+tb.park:'0 / 0'])}}
  box.innerHTML='<div class="kv">'+rows.map(r=>'<span>'+esc(r[0])+'</span><b>'+esc(r[1])+'</b>').join('')+'</div>'}
 
 /* ---------- live canvas updates ---------- */
-function updNodes(){for(const n of M.nodes){const el=nodeEls[n.id];if(!el||el.note)continue;const k=KIND(n),r=sim.rt(n),c=r.c,ra=r.rate;let s1='',s2='',g=0,down=sim.off(n);
+function updNodes(){for(const n of M.nodes){const el=nodeEls[n.id];if(!el||el.note)continue;const k=KIND(n),r=sim.view(n),c=r.c,ra=r.rate;let s1='',s2='',g=0,down=sim.off(n);
   const er=ra.err>0.05?' · err '+f1(ra.err)+'/s':'';
   if(k==='producer'){const held=n.fault.pause?' (paused)':sim.manual?' (held)':'';s1=n.cfg.mode==='schedule'?(held||down?'batch'+(held||' (app down)'):'batch of '+cut(String(n.cfg.release),9)+' in '+(sim.nextFire(n,r)/1000).toFixed(0)+' s'):f1(ra.in)+'/s sent'+held;const d=ra.ok+ra.err;s2=d>0?'ok '+pct(ra.ok/d):n.cfg.mode==='schedule'&&r.lastCount?'last '+r.lastCount:''}
   else if(k==='service'){const w=sim.workers(n);s1='in '+f1(ra.in)+'/s'+er;const crashed=r.downUntil>sim.t;if(crashed)down=true;
    const ib=r.inbox.length+r.ibFly;s2=crashed?'restarting…':down?'down'+(r.outbox.length?' · outbox '+r.outbox.length:'')+(ib?' · inbox '+ib:''):(n.cfg.inbox?'inbox '+ib+' · busy '+r.busy+'/'+w:'busy '+r.busy+'/'+w+' · queue '+r.q.length)+(r.outbox.length?' · outbox '+r.outbox.length:'');
    g=Math.max(r.busy/w*0.5,r.q.length/Math.max(1,Math.min(n.cfg.queueCap,1000)),n.cfg.inbox?r.inbox.length/Math.max(1,Math.min(n.cfg.inboxCap,500)):0,r.outbox.length/500)}
-  else if(k==='store'||k==='external'){s1='in '+f1(ra.in)+'/s'+er;s2='active '+r.busy+'/'+n.cfg.maxConc+' · waiting '+r.q.length;g=Math.max(r.busy/n.cfg.maxConc*0.5,r.q.length/Math.max(1,n.cfg.queueCap))}
+  else if(k==='store'||k==='external'){s1='in '+f1(ra.in)+'/s'+er;s2='active '+r.busy+'/'+n.cfg.maxConc+' · waiting '+r.q.length;g=Math.max(r.busy/n.cfg.maxConc*0.5,r.q.length/Math.max(1,n.cfg.queueCap));
+   if(el.tr)for(const t of n.cfg.tables||[]){const x=el.tr[t.id],tb=r.tb&&r.tb[t.id];if(!x)continue;
+    x.textContent=cut(t.name,13)+' · '+(t.kind==='queue'?(tb?tb.rows.length+tb.fly:0)+' waiting'+(tb&&tb.park?', '+tb.park+' parked':''):(tb?tb.n:0)+(t.kind==='dedupe'?' ids':' rows'));if(t.kind==='queue'&&tb)g=Math.max(g,tb.rows.length/500)}}
   else if(k==='cache'){s1='in '+f1(ra.in)+'/s'+er;const t=(c.hit|0)+(c.miss|0);s2='hit '+(t?pct((c.hit|0)/t):'–')+' · '+r.map.size+' keys'}
   else if(k==='log'){const l=sim.lag(r);s1='in '+f1(ra.in)+'/s'+er;s2='lag '+l.lag+(l.dlq?' · DLQ '+l.dlq:'')+(c.expired?' · expired '+c.expired:'');g=l.lag/Math.max(1,(n.cfg.retention||5000)*0.2)}
   else if(k==='queue'){s1='in '+f1(ra.in)+'/s'+er;s2='depth '+r.ready.length+' · in flight '+r.infl+(c.dlq?' · DLQ '+c.dlq:'');g=r.ready.length/Math.max(1,Math.min(n.cfg.capacity,1000))}
@@ -1610,12 +1947,13 @@ function buildDock(){dockBody.innerHTML='';sig={};
  else dockBody.append(h('div',{class:'logl',id:'logl'}));
  updDock()}
 const ACOLS=[['lost','lost','The client was told OK (or the event was accepted), but a downstream effect never happened.','b'],['duplicate','duplicate','A side effect was applied more than once for a single request.','b'],['partial','partial','A multi-step handler completed some required steps but not others — the systems now disagree.','b'],
- ['ghost','ghost','The client saw a failure or timeout, but side effects were committed anyway.','b'],['corrupt','corrupt','Malformed data was persisted.','b'],['ooo','out of order','A consumer handled an older message for a key after a newer one from the same topic or queue.','w'],
+ ['ghost','ghost','The client saw a failure or timeout, but side effects were committed anyway.','b'],['corrupt','corrupt','Malformed data was persisted.','b'],['ooo','out of order','An older message for a key was handled, or written downstream, after a newer one from the same topic, queue or table.','w'],
  ['stale','stale read','A read returned data older than the latest committed write for that key.','w'],['parked','in DLQ','Moved to a dead-letter queue: not processed, but not lost.','w'],['degraded','degraded','Succeeded without an optional step (fallback path).','w']];
 const EV={done:['','handler finished in'],fx:['y','effect applied at'],dupfx:['x','DUPLICATE effect applied at'],duphandle:['x','handled a SECOND time by'],dedup:['o','duplicate suppressed (idempotent) at'],undo:['o','compensated / undone at'],afail:['x','call failed →'],hfail:['x','handler failed in'],retry:['o','retrying →'],timeout:['o','caller timed out waiting for'],
  netdrop:['x','request lost on the network →'],respdrop:['x','response lost on the way back from'],reset:['x','connection reset →'],netdup:['o','network duplicated the request →'],lost:['x','LOST at'],dlq:['o','moved to DLQ after failing in'],redeliver:['o','will be redelivered to'],ptimeout:['o','processing timeout, consumer'],
- outbox:['y','outbox row committed by'],inbox:['y','stored in the inbox of'],ibretry:['o','inbox processing failed, row kept for the next poll in'],ibpark:['o','parked in the inbox after repeated failures in'],rollback:['x','commit failed → rolled back at'],reject:['o','rejected as malformed by'],poison:['x','handler threw on malformed data in'],ooo:['o','handled out of order by'],compfail:['x','compensation FAILED at'],dblsubmit:['o','client double-submitted →']};
-function nm(id){const n=nodeById(id);return n?n.name:'(removed)'}
+ route:['','routed to'],row:['y','row inserted at'],rowretry:['o','row kept for a later poll after a failure in'],rowpark:['o','row parked after repeated failures at'],reread:['o','handled row could not be marked done and will be read again at'],
+ ddrow:['y','message id recorded at'],ddhit:['o','unique key hit: message id already recorded at'],ddskip:['o','duplicate skipped by'],ooow:['x','OLDER update applied after a newer one at'],outbox:['y','outbox row committed by'],inbox:['y','stored in the inbox of'],ibretry:['o','inbox processing failed, row kept for the next poll in'],ibpark:['o','parked in the inbox after repeated failures in'],rollback:['x','commit failed → rolled back at'],reject:['o','rejected as malformed by'],poison:['x','handler threw on malformed data in'],ooo:['o','handled out of order by'],compfail:['x','compensation FAILED at'],dblsubmit:['o','client double-submitted →']};
+function nm(id){const n=sim.node(id)||nodeById(String(id).split('@')[0]);return n?n.name:'(removed)'}
 function setHtml(el,html){const st=el.scrollTop;el.innerHTML=html;el.scrollTop=st}
 function updDock(){if($('#dock').classList.contains('min'))return;const A=sim.A,G=sim.G;
  if(dockTab==='dash'){const last=G.hist[G.hist.length-1]||{},d=A.ok+A.fail,rec=(last.ok||0)+(last.err||0);
@@ -1630,7 +1968,7 @@ function updDock(){if($('#dock').classList.contains('min'))return;const A=sim.A,
   const row=(name,b,cr)=>{const cl=b.clean+b.cleanFail+b.rejected;return'<tr><td>'+esc(name)+'</td><td>'+b.done+'</td><td class="'+(cr-b.done?'':'z')+'">'+(cr-b.done)+'</td><td>'+(b.done?pct(b.ok/b.done):'–')+'</td><td class="'+(cl?'g':'z')+'">'+cl+'</td>'+ACOLS.map(c=>'<td class="'+(b[c[0]]?c[3]:'z')+'">'+b[c[0]]+'</td>').join('')+'</tr>'};
   for(const n of M.nodes)if(KIND(n)==='producer'){const b=A.by[n.id];if(b)t+=row(n.name,b,b.created)}
   t+=row('All flows',A,A.created)+'</table>';
-  let rc='';for(const n of M.nodes){const c=sim.rt(n).c;if(c.w)rc+='<tr><td>'+esc(n.name)+'</td><td>'+(c.u|0)+'</td><td>'+c.w+'</td><td class="'+(c.w-(c.u|0)?'b':'z')+'">'+(c.w-(c.u|0))+'</td><td class="'+(c.dedup?'g':'z')+'">'+(c.dedup|0)+'</td><td class="'+(c.undo?'w':'z')+'">'+(c.undo|0)+'</td></tr>'}
+  let rc='';for(const n of M.nodes){const c=sim.view(n).c;if(c.w)rc+='<tr><td>'+esc(n.name)+'</td><td>'+(c.u|0)+'</td><td>'+c.w+'</td><td class="'+(c.w-(c.u|0)?'b':'z')+'">'+(c.w-(c.u|0))+'</td><td class="'+(c.dedup?'g':'z')+'">'+(c.dedup|0)+'</td><td class="'+(c.undo?'w':'z')+'">'+(c.undo|0)+'</td></tr>'}
   t+='<h3>Reconciliation — what each store, topic and API actually received</h3>'+(rc?'<table><tr><th>Component</th><th title="Requests that produced at least one effect here">distinct requests</th><th>effects applied</th><th title="Effects applied beyond the first for the same request">duplicates</th><th title="Repeats rejected by idempotency">suppressed</th><th title="Removed again by compensation">undone</th></tr>'+rc+'</table>':'<p class="muted">Nothing written yet.</p>');
   t+='<p class="muted" style="font-size:11.5px;margin:8px 0 0">Hover a column heading for its definition. Suppressed duplicates: '+A.dedup+'. Retries: '+G.retries+'. Timeouts: '+G.timeouts+'.</p>';
   setHtml($('#auL'),t);
@@ -1653,8 +1991,8 @@ function svcCap(n){return sim.workers(n)/Math.max(0.5,estLat(n,0)*(n.fault.laten
 function worstTime(n,d){if(!n||d>6)return 0;const k=KIND(n);if(k==='service')return n.cfg.procMs+n.cfg.actions.reduce((s,a)=>{const e=edgeById(a.edge);if(!e||a.await===false||(a.outbox&&MSGK[KIND(nodeById(e.to))]))return s;return s+a.timeout*((a.retries|0)+1)},0);if(k==='proxy')return n.cfg.timeout;return 0}
 function offeredLoad(){const load={};const go=(id,rate,d)=>{if(d>10||rate<=0)return;const n=nodeById(id);if(!n)return;load[id]=(load[id]||0)+rate;const k=KIND(n),outs=M.edges.filter(e=>e.from===id);
   if(k==='proxy'||k==='queue'){const r=rate*(k==='proxy'?1-(n.cfg.hitRatio||0)/100:1);for(const e of outs)go(e.to,r/outs.length,d+1)}
-  else if(k==='service'){for(const a of n.cfg.actions){const e=edgeById(a.edge);if(e&&a.when!=='fallback')go(e.to,rate,d+1)}}
-  else if(k==='cache'){}else for(const e of outs)go(e.to,rate,d+1)};
+  else if(k==='service'){for(const a of n.cfg.actions){const e=edgeById(a.edge);if(e&&a.when!=='fallback'){go(e.to,rate,d+1);const db=nodeById(e.to),T=tableOf(db,e.cfg.table);if(T&&T.kind==='queue')for(const pe of M.edges)if(pe.from===db.id&&pe.cfg.table===T.id)go(pe.to,rate,d+1)}}}
+  else if(k==='cache'||k==='store'){}else for(const e of outs)go(e.to,rate,d+1)};
  for(const n of M.nodes)if(KIND(n)==='producer')for(const e of M.edges.filter(e=>e.from===n.id))go(e.to,prodPeak(n),0);return load}
 function relMax(n){let mx=0;for(const t of String(n.cfg.release==null?'':n.cfg.release).split(/[\s,;]+/)){const m=/^(\d+)(?:-(\d+))?$/.exec(t);if(m)mx=Math.max(mx,+(m[2]||m[1]))}return mx}
 function prodPeak(n){const s=n.fault.surge||1;return n.cfg.mode==='schedule'?relMax(n)/Math.max(1,(+n.cfg.spreadMs||0)/1000)*s:Math.max(n.cfg.rateMin,n.cfg.rateMax)*s}
@@ -1700,6 +2038,14 @@ function lint(){const out=[],add=(lvl,n,title,text)=>out.push({lvl,id:n?n.id:'',
      const wt=worstTime(n,0);if(n.cfg.respond!=='ack'&&wt>s.cfg.timeout)add('warn',n,'callee can outlive its caller',s.name+' gives up after '+s.cfg.timeout+' ms but this handler may keep working for up to '+Math.round(wt)+' ms — doing work nobody is waiting for.')}}
    const cap=svcCap(n),ld=load[n.id];if(ld&&cap<ld)add('risk',n,'capacity bottleneck','Can process about '+f1(cap)+' req/s but may be offered up to '+f1(ld)+' req/s.')}
   else if(k==='store'||k==='external'){const cap=n.cfg.maxConc/Math.max(0.1,n.cfg.latency*(n.fault.latencyMult||1))*1000,ld=load[n.id];if(ld&&cap<ld)add('risk',n,'capacity bottleneck','Can serve about '+f1(cap)+' ops/s but may be offered up to '+f1(ld)+' ops/s.');
+   for(const t of n.cfg.tables||[]){const pe=outs.filter(e=>e.cfg.table===t.id),wr=ins.filter(e=>e.cfg.table===t.id);
+    if(t.kind==='queue'){if(!pe.length)add('warn',n,'nothing reads table "'+t.name+'"','Rows are written but no polling loop is connected to the ● of this table.');
+     for(const e of pe){const p=e.cfg.poll,pc=p.batch/p.everyMs*1000,c=nodeById(e.to),lp=load[c.id]||0;
+      if(lp>pc)add('risk',c,'polling "'+t.name+'" cannot keep up','Reading '+p.batch+' rows every '+p.everyMs+' ms handles at most '+f1(pc)+' rows/s, but up to '+f1(lp)+' rows/s are written. The table grows.');
+      else add('info',c,'polling adds delay','A row in "'+t.name+'" waits up to '+ms(p.everyMs)+' before it is picked up, and leaves in batches of up to '+p.batch+'.');
+      if(p.mark==='batch')add('warn',c,'rows marked per batch','One failed row makes the whole batch of '+p.batch+' from "'+t.name+'" run again.');if(p.send==='parallel')add('info',c,'batch processed unordered','Rows for the same key can overtake each other.')}}
+    if(t.kind==='dedupe'){if(wr.length)add('good',n,'de-dupe table "'+t.name+'"','A repeated message hits the unique key and is skipped.');
+     for(const e of wr){const s=nodeById(e.from),a=s.cfg.actions&&s.cfg.actions.find(x=>x.edge===e.id);if(a&&!a.tx)add('risk',s,'de-dupe insert outside the transaction','The message id is committed before the work. If the work then fails, every redelivery is skipped as a duplicate and the message is lost.')}}}
    if(k==='store'&&n.cfg.replicaLag>0)add('info',n,'replication lag','Reads within '+n.cfg.replicaLag+' ms of a write return stale data (no read-your-writes).');
    if(n.cfg.rateLimit>0&&load[n.id]>n.cfg.rateLimit)add('warn',n,'rate limit below offered load','Limited to '+n.cfg.rateLimit+'/s but may be offered '+f1(load[n.id])+'/s.')}
   else if(k==='proxy'){if(outs.length>1&&!n.cfg.healthEject)add('warn',n,'no health checks','Traffic keeps flowing to a target that is down or hanging.');if(n.cfg.healthEject)add('good',n,'outlier ejection','Failing targets are removed from rotation.');
@@ -1710,10 +2056,14 @@ function lint(){const out=[],add=(lvl,n,title,text)=>out.push({lvl,id:n?n.id:'',
   else if(k==='producer'){if(!outs.length)add('info',n,'not connected','This source has nowhere to send traffic.');
    if(n.cfg.mode==='schedule'){const mx=relMax(n),g=n.group&&groupById(n.group);if(mx>=100&&!(n.cfg.spreadMs>0))add('warn',n,'batch released all at once','Up to '+mx+' messages arrive in the same instant. Whatever is downstream must buffer them (a topic or queue) or it will shed most of the batch.');
     if(n.cfg.spreadMs>0)add('good',n,'throttled batch release','The batch is spread over '+ms(n.cfg.spreadMs)+' instead of arriving as one spike.');
-    if(g&&n.cfg.perInstance&&g.cfg.instances>1)add('risk',n,'scheduler runs on every instance',g.name+' has '+g.cfg.instances+' instances and no leader lock: each run releases '+g.cfg.instances+' copies of the batch.')}if(n.cfg.retries>=2&&n.cfg.backoff<50)add('warn',n,'client retries without backoff','Retries arrive in a tight loop and amplify any overload.')}}
- for(const g of M.groups){const mem=M.nodes.filter(n=>n.group===g.id),G={id:mem.length?mem[0].id:'',name:g.name};if(!mem.length)continue;
-  if(g.cfg.instances<=1)add('info',G,'single instance','One host failure or restart takes the whole app down.');else add('good',G,g.cfg.instances+' instances','Losing one host costs '+Math.round(100/g.cfg.instances)+'% of capacity instead of the whole app.');
-  if(g.cfg.stopped)add('info',G,'not running at baseline','Starts only when a cut-over deploys it ('+ms(g.cfg.startMs)+' start-up time).');else if(g.cfg.weight<=0)add('info',G,'standby at 0% traffic','Deployed and ready, so a cut-over or rollback is instant — at the cost of running two copies.')}
+    if(g&&n.cfg.perInstance&&gInst(g)>1)add('risk',n,'scheduler runs on every instance',g.name+' has '+gInst(g)+' instances and no leader lock: each run releases '+gInst(g)+' copies of the batch.')}if(n.cfg.retries>=2&&n.cfg.backoff<50)add('warn',n,'client retries without backoff','Retries arrive in a tight loop and amplify any overload.')}}
+ for(const g of M.groups){const mem=M.nodes.filter(n=>n.group===g.id),G={id:mem.length?mem[0].id:'',name:g.name};if(!mem.length)continue;const ss=allSgs(g);
+  if(g.clusters.length>1)add('info',G,g.clusters.length+' clusters (shards)','Each key lives on one cluster: losing a cluster fails 1/'+g.clusters.length+' of the keys and leaves the rest untouched. A hot key range cannot borrow capacity from the other clusters.');
+  for(const c of g.clusters){const live=c.sgs.filter(s=>!s.cfg.stopped&&s.cfg.weight>0),own=c.sgs.filter(s=>s.cfg.consume==='own'&&!s.cfg.stopped);
+   if(own.length&&mem.some(n=>M.edges.some(e=>e.to===n.id&&KIND(nodeById(e.from))==='log')))add('risk',G,'two builds read the same messages','In '+c.name+', '+own.map(s=>s.name).join(', ')+' read'+(own.length>1?'':'s')+' with a separate consumer group, so every message is processed by more than one server group. Effects are applied twice and can land out of order unless a shared de-dupe table or idempotent writes absorb it.');
+   if(live.length>1)add('info',G,live.length+' server groups share traffic','In '+c.name+': '+live.map(s=>s.name+' '+s.cfg.weight+'%').join(', ')+'. The builds must be compatible with the same data and messages while they run side by side.')}
+  if(Math.min(...ss.map(s=>s.regions.reduce((t,r)=>t+r.instances,0)))<=1)add('info',G,'a server group with a single instance','One host failure or restart takes that server group down.');
+  if(ss.some(s=>!s.cfg.stopped&&s.regions.length<2))add('info',G,'single region','A data-centre outage takes every instance of a server group at once.');else add('good',G,'spread over regions','Losing one region leaves instances running elsewhere, if the survivors have the capacity.')}
  const ord={risk:0,warn:1,info:2,good:3};return out.sort((a,b)=>ord[a.lvl]-ord[b.lvl])}
 function scorecard(fnd){const nn=M.nodes.filter(n=>KIND(n)!=='note'),cnt=l=>fnd.filter(f=>f.lvl===l).length;let depth=0;for(const n of nn)if(KIND(n)==='producer')depth=Math.max(depth,syncDepth(n,0));
  const mech=new Set();for(const n of nn){const k=KIND(n);if(k==='service'){if(n.cfg.idempotent)mech.add('idempotent consumer');for(const a of n.cfg.actions){if(a.retries>0)mech.add('retries');if(a.breaker)mech.add('circuit breaker');if(a.outbox)mech.add('outbox');if(a.tx)mech.add('transactions');if(a.onError==='compensate')mech.add('saga');if(n.cfg.inbox)mech.add('inbox');if(a.when==='fallback'||a.onError==='continue')mech.add('fallback')}if(n.cfg.queueCap<=200)mech.add('load shedding')}
@@ -1755,8 +2105,9 @@ function showHelp(){showModal(h('h2',null,'How Faultline works',h('button',{oncl
 <li><b>One message at a time.</b> Every source has a <b>▶ 1</b> button. While the clock is paused it sends a single message, runs in slow motion with all sources held until that message has settled, then pauses again; its hops are listed in the source's panel. <b>✋ Hold sources</b> silences automatic traffic while the clock keeps running.</li>
 <li><b>Outbox and inbox.</b> A service's <b>Outbox relay</b> section sets how outbox rows are picked up (poll interval and batch size, or CDC), whether a batch is published in order, and when rows are marked as sent. Its <b>Inbox</b> section stores incoming messages first and processes them in polled batches.</li>
 <li><b>Schedulers.</b> A Scheduler / Cron releases a batch every interval. "Messages per run" takes a repeating pattern such as <kbd>0,0,0,2000</kbd>, and the batch can be released at once or spread over a window.</li>
-<li><b>App groups.</b> Add an <b>App / host group</b> and drop components into it. The group has instances (kill one, rolling restart), group-wide faults (bad build, slow host, isolated network) and a traffic share. With two groups behind the same load balancer, queue or consumer group id you can run a <b>canary</b>, <b>blue/green</b>, <b>highlander</b> or <b>A/B</b> cut-over and roll it back.</li>
-<li><b>Recover.</b> <b>✚ Heal all</b> clears faults and returns app groups to their baseline traffic split. Watch how long the backlog takes to drain, and what was permanently lost.</li>
+<li><b>Tables and polling loops.</b> Select a database and add <b>tables</b> (inbox, outbox, de-dupe, data). Each table is a row under the node and its own connection point: drop a service's connection on a row to write to that table, and drag the <b>●</b> on a work table to a <b>Polling loop</b> that reads it in batches. The dashed line from the table carries the poll interval, batch size, ordering and how rows are marked done. A de-dupe table makes a repeated message a unique-key hit that the consumer skips.</li>
+<li><b>Applications.</b> Add an <b>Application</b> box and drop services into it. It is deployed as <b>clusters</b> (shards by key; the tabs on the box) → <b>server groups</b> (builds; the sections under the title, always 100% of a cluster's traffic between them) → <b>regions</b> (instances per data centre). Select the box to edit the hierarchy, lose a region or a cluster, kill an instance, ship a bad build, or run a <b>canary</b>, <b>blue/green</b>, <b>highlander</b> or <b>A/B</b> cut-over between two server groups. Mark a server group "A/B: own consumer group" to have two builds read the same topic.</li>
+<li><b>Recover.</b> <b>✚ Heal all</b> clears faults and returns server groups to their baseline traffic split. Watch how long the backlog takes to drain, and what was permanently lost.</li>
 <li><b>Keys.</b> <kbd>Space</kbd> run / pause · <kbd>Del</kbd> delete selection · <kbd>Esc</kbd> deselect · scroll to zoom · drag the background to pan.</li>`}),
  h('p',{class:'muted'},'This is a teaching model, not a capacity planner: latencies, pools and retention are simplified, and the consistency audit judges each request against the actions you configured.'))}
 $('#bRun').onclick=()=>setRun(!running);
