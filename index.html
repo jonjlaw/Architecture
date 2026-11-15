@@ -242,8 +242,8 @@ const TYPES={
  note:{kind:'note',label:'Text label',group:'Other',icon:'🏷',desc:'Annotation on the canvas.'}
 };
 const KDEF={
- producer:{rateMin:5,rateMax:10,pattern:'steady',period:20,spacing:'poisson',op:'write',keys:20,keyspace:'',badPct:0,dupPct:0,timeout:2000,retries:0,backoff:200,mode:'rate',everyS:15,release:'200',spreadMs:0,perInstance:false},
- service:{concurrency:8,procMs:20,queueCap:100,respond:'after',idempotent:false,badData:'reject',rateLimit:0,restartMs:3000,
+ producer:{rateMin:5,rateMax:10,pattern:'steady',period:20,spacing:'poisson',op:'write',keys:20,keyspace:'',types:'',badPct:0,dupPct:0,timeout:2000,retries:0,backoff:200,mode:'rate',everyS:15,release:'200',spreadMs:0,perInstance:false},
+ service:{concurrency:8,procMs:20,queueCap:100,respond:'after',idempotent:false,badData:'reject',contract:'',rateLimit:0,restartMs:3000,
   outboxMode:'poll',outboxPollMs:100,outboxBatch:50,outboxSend:'seq',outboxMark:'each',outboxTimeout:500,inbox:false,inboxPollMs:200,inboxBatch:20,inboxMax:5,inboxCap:10000,actions:[]},
  store:{latency:5,maxConc:20,queueCap:200,idempotent:false,supportsTx:true,replicaLag:0,tables:[]},
  external:{latency:150,maxConc:100,queueCap:100,rateLimit:0,idempotent:false},
@@ -272,14 +272,24 @@ const SUBD={ack:'after',maxAttempts:3,backoff:500,onExhaust:'dlq',timeout:5000,p
 const NODE_W=176,NODE_H=76;
 const GDEF={startMs:3000,detectMs:2000,sticky:false,canarySteps:'5,25,50,100',canaryStepS:6,canaryRollback:10};
 const GFDEF={down:false,partition:false},CFDEF={down:false},RFDEF={down:false};
-const SGDEF={weight:100,stopped:false,consume:'shared'};
+const SGDEF={weight:100,stopped:false,consume:'shared',emitVer:0};
 const SFDEF={down:false,instDown:0,errorRate:0,latencyMult:1,weight:null,stopped:null};
 /* kinds that run once per server group (cloned at run time) and kinds that can belong to an app at all */
 const REPL={service:1,proxy:1,cache:1},MEMB={service:1,proxy:1,cache:1,producer:1};
 /* a polling loop reading a database work table */
 const POLLD={everyMs:200,batch:20,send:'keyed',mark:'each',maxAttempts:5,backoff:1000,onExhaust:'park',timeout:5000};
 const TID=x=>x.tid||x.id;
-const ACTD={op:'write',tx:false,outbox:false,onError:'abort',when:'always',await:true,timeout:1000,retries:0,backoff:100,breaker:false,failPct:0};
+/* message types. One syntax, three uses: a source's mix "OrderCreated:70, OrderCancelled@2:30" (name@version:weight),
+   a filter "OrderCreated, OrderCancelled", and a consumer's contract "OrderCreated@2, *@1" (newest version understood). */
+const _tc=new Map();
+function tyParse(s){s=String(s||'');let v=_tc.get(s);if(v)return v;const mix=[],set=new Set(),max=new Map();let tot=0;
+ for(const tok of s.split(/[,;\n]+/)){const m=/^\s*([^\s@:]+)\s*(?:@\s*(\d+))?\s*(?::\s*([\d.]+))?\s*$/.exec(tok);if(!m)continue;const w=m[3]==null?1:+m[3]||0,ver=m[2]==null?null:+m[2];
+  mix.push({ty:m[1],ver:ver==null?1:ver,w});tot+=w;set.add(m[1]);max.set(m[1],ver)}
+ v={mix,set,max,tot};if(_tc.size>500)_tc.clear();_tc.set(s,v);return v}
+function tyIn(list,ty){if(!list)return true;const p=tyParse(list);return !p.set.size||p.set.has(ty||'')}
+/* newest version of a type that a contract accepts: undefined = the contract says nothing about it, null = any version */
+function tyMax(list,ty){const p=tyParse(list);return p.max.has(ty||'')?p.max.get(ty||''):p.max.has('*')?p.max.get('*'):undefined}
+const ACTD={op:'write',tx:false,outbox:false,onError:'abort',when:'always',await:true,timeout:1000,retries:0,backoff:100,breaker:false,failPct:0,types:'',as:'',guard:false};
 const MSGK={log:1,queue:1,pubsub:1};
 
 function KIND(n){const t=n&&TYPES[n.type];return t?t.kind:'note'}
@@ -314,7 +324,7 @@ function removeEdge(m,id){m.edges=m.edges.filter(e=>e.id!==id);for(const n of m.
 function removeNode(m,id){for(const e of m.edges.filter(e=>e.from===id||e.to===id))removeEdge(m,e.id);m.nodes=m.nodes.filter(n=>n.id!==id);m.rev=(m.rev|0)+1}
 /* deployment hierarchy */
 function mkRegion(m,name,inst){return{id:'r'+(m.seq++),name:name||'region-1',instances:Math.max(1,inst|0||1),fault:clone(RFDEF)}}
-function mkSg(m,o){o=o||{};return{id:'v'+(m.seq++),name:o.name||'main',cfg:Object.assign(clone(SGDEF),{weight:o.weight==null?100:o.weight,stopped:!!o.stopped,consume:o.consume||'shared'}),
+function mkSg(m,o){o=o||{};return{id:'v'+(m.seq++),name:o.name||'main',cfg:Object.assign(clone(SGDEF),{weight:o.weight==null?100:o.weight,stopped:!!o.stopped,consume:o.consume||'shared',emitVer:o.emitVer|0}),
  regions:(o.regions&&o.regions.length?o.regions:[['region-1',1]]).map(x=>mkRegion(m,x[0],x[1])),fault:clone(SFDEF)}}
 function mkCluster(m,o){o=o||{};const c={id:'c'+(m.seq++),name:o.name||'cluster-1',sgs:(o.sgs&&o.sgs.length?o.sgs:[{}]).map(s=>mkSg(m,s)),fault:clone(CFDEF)};fixWeights(c);return c}
 /* the server groups of one cluster always share exactly 100% of its traffic; "keep" is the one the user just edited */
@@ -510,7 +520,7 @@ class Sim{
   let partial=null;
   for(const sid in tr.sv){const s=this.node(sid);if(!s||!s.cfg.actions)continue;let tot=0,ap=0;
    for(const a of s.cfg.actions){if(a.op==='read'||!this.edge(a.edge))continue;
-    if(a.onError==='continue'||a.await===false||a.when==='fallback')continue;tot++;if(tr.fx[sid+':'+a.id]>0)ap++}
+    if(a.onError==='continue'||a.await===false||a.when==='fallback')continue;if(a.types&&!tyIn(a.types,tr.sv[sid]))continue;tot++;if(tr.fx[sid+':'+a.id]>0||(tr.vs&&tr.vs[sid+':'+a.id]))ap++}
    if(ap>0&&ap<tot)partial=sid}
   const deg=!!tr.deg&&!partial;
   if(tr.ok&&tr.lost)flags.push('lost');
@@ -584,7 +594,10 @@ class Sim{
  effect(n,r,msg,key){const tr=msg.tr,prev=tr.fx[key]|0;
   if(prev>0&&n.cfg.idempotent){this.A.dedup++;r.c.dedup=(r.c.dedup|0)+1;this.tlog(tr,'dedup',n.id);return false}
   /* an ordered stream (topic, queue, work table) feeding this write: an older update landing after a newer one overwrites it */
-  if(msg.ord&&msg.seq!=null&&msg.key!=null){const ls=r.ls||(r.ls=new Map()),k2=key+'|'+(msg.os||'')+'|'+msg.key,l=ls.get(k2);if(l!==undefined&&l>msg.seq){r.c.ooo=(r.c.ooo|0)+1;tr.ooo=1;this.tlog(tr,'ooow',n.id)}else ls.set(k2,msg.seq)}
+  if((msg.ord||msg.vc)&&msg.seq!=null&&msg.key!=null){const ls=r.ls||(r.ls=new Map()),k2=key+'|'+(msg.os||(msg.ord?'':'s:'+tr.src))+'|'+msg.key,l=ls.get(k2);
+   /* version check ("only if newer"): a write that is not newer than what is already stored is refused, which also makes a redelivery harmless */
+   if(msg.vc){if(l!==undefined&&l>=msg.seq){r.c.vskip=(r.c.vskip|0)+1;this.A.vskip=(this.A.vskip|0)+1;(tr.vs||(tr.vs={}))[key]=1;this.tlog(tr,l===msg.seq?'vdup':'vskip',n.id);return false}ls.set(k2,msg.seq)}
+   else if(l!==undefined&&l>msg.seq){r.c.ooo=(r.c.ooo|0)+1;tr.ooo=1;this.tlog(tr,'ooow',n.id)}else ls.set(k2,msg.seq)}
   tr.fx[key]=prev+1;r.c.w=(r.c.w|0)+1;if(!prev)r.c.u=(r.c.u|0)+1;else tr.dupK=key;if(msg.bad&&!MSGK[KIND(n)])tr.corrupt=1;
   if(msg.key!=null)this.lastWrite.set(msg.key,this.t);
   this.tlog(tr,prev?'dupfx':'fx',n.id);return true}
@@ -595,7 +608,7 @@ class Sim{
   if(op==='commit'){const ks=msg.keys,tbs=msg.tbs||[];
    /* a de-dupe row that already exists is a unique-key violation: the whole transaction rolls back and the consumer skips the message */
    for(let i=0;i<ks.length;i++){const t=tableOf(n,tbs[i]);if(t&&t.kind==='dedupe'&&tr.dd&&tr.dd[n.id+'|'+t.id+'|'+ks[i]])return this.ddHit(n,r,tr)}
-   for(let i=0;i<ks.length;i++)this.put(n,r,msg,ks[i],tableOf(n,tbs[i]));
+   for(let i=0;i<ks.length;i++){const x=msg.ms&&msg.ms[i];this.put(n,r,x?Object.assign({},msg,{ty:x.ty,ver:x.ver,vc:x.vc}):msg,ks[i],tableOf(n,tbs[i]))}
    if(msg.ob){const s=this.node(msg.svc);if(s)for(const o of msg.ob)this.obPush(s,o,n.id)}return{ok:true}}
   return this.put(n,r,msg,key,T)}
 
@@ -608,7 +621,7 @@ class Sim{
   if(this.effect(n,r,msg,key)&&T){if(T.kind==='queue')this.rowPush(n,r,T,msg);else this.tb(r,T.id).n++}
   return{ok:true}}
  rowPush(n,r,T,msg){const tb=this.tb(r,T.id),pe=this.outs(n.id).filter(e=>e.cfg.poll&&e.cfg.table===T.id);tb.n++;if(!pe.length)return;
-  const tr=msg.tr;tr.pending++;tb.rows.push({tr,key:msg.key,seq:(tb.ks[msg.key]=(tb.ks[msg.key]|0)+1),bad:msg.bad,n:0,t:this.t});this.tlog(tr,'row',n.id,T.name);
+  const tr=msg.tr;tr.pending++;tb.rows.push({tr,key:msg.key,seq:(tb.ks[msg.key]=(tb.ks[msg.key]|0)+1),bad:msg.bad,ty:msg.ty,ver:msg.ver,n:0,t:this.t});this.tlog(tr,'row',n.id,T.name);
   for(const e of pe)this.tbKick(n,r,tb,e)}
  tbKick(n,r,tb,e){const st=tb.pe[e.id]||(tb.pe[e.id]={T:false,busy:false,hold:0,last:null,lastN:0});if(st.T)return;const p=Math.max(10,(e.cfg.poll||POLLD).everyMs||200);
   /* several loops on one table (copies of a poller, or different pollers) do not tick in lock-step, so they share the rows */
@@ -632,7 +645,7 @@ class Sim{
     else{const free=x.err==='down'||x.err==='overload'||x.err==='throttled';if(!free)row.n++;
      if(!free&&p.onExhaust!=='block'&&row.n>=(p.maxAttempts||5)){res[i]=3;tr.parked=1;tb.park++;this.tlog(tr,'rowpark',n.id)}else{res[i]=2;this.tlog(tr,'rowretry',e.to,x.cause||x.err)}}
     cb(!!x.ok)};
-   this.send(e,{tr,key:row.key,seq:row.seq,bad:row.bad,act:null,op:'write',ord:true},fin);
+   this.send(e,{tr,key:row.key,seq:row.seq,bad:row.bad,ty:row.ty,ver:row.ver,act:null,op:'write',ord:true},fin);
    this.at(p.timeout||5000,()=>{if(!done){this.tlog(tr,'ptimeout',e.to);fin({ok:false,err:'timeout',retry:true})}})};
   if(p.send==='parallel'){let left=rows.length;for(let i=0;i<rows.length;i++)one(i,()=>{if(--left===0)finish()})}
   else if(p.send==='seq'){let i=0;const next=()=>{if(i>=rows.length)return finish();one(i++,ok=>ok?next():finish())};next()}
@@ -642,6 +655,8 @@ class Sim{
 
  /* ---------- services ---------- */
  svcRecv(n,r,msg,reply,e){const cfg=n.cfg;
+  /* consumer-side filter: the message is still delivered and acknowledged, it just causes no work */
+  if(e&&e.cfg.types&&!tyIn(e.cfg.types,msg.ty)){r.c.filt=(r.c.filt|0)+1;this.tlog(msg.tr,'filter',n.id,msg.ty||'untyped');return this.at(1,()=>reply({ok:true,filtered:true}))}
   if(cfg.rateLimit>0&&!this.bucket(r,cfg.rateLimit)){r.c.err++;r.c.thr=(r.c.thr|0)+1;return this.at(1,()=>reply({ok:false,err:'throttled',retry:true}))}
   if(cfg.inbox)return this.inboxRecv(n,r,msg,reply,e);
   if(r.q.length>=cfg.queueCap&&r.busy>=this.workers(n)){r.c.err++;r.c.rej=(r.c.rej|0)+1;return this.at(1,()=>reply({ok:false,err:'overload',retry:true}))}
@@ -687,23 +702,30 @@ class Sim{
   else{const ms=n.cfg.restartMs||3000;r.downUntil=this.t+ms;this.at(ms+1,()=>{this.log('ok',n.name+' restarted');this.pump(n,r)});this.log('crash',n.name+' crashed ('+jobs.length+' in-flight requests lost) — restarting in '+ms+' ms')}
   /* the outbox relay runs inside the service: publishes that were in flight are not marked as sent and go out again */
   r.obEp++;r.relaying=false;this.obPurge(r);if(r.outbox.length)this.obKick(n,r,true)}
- handle(n,r,job,ep){const msg=job.msg,tr=msg.tr,cfg=n.cfg,nid=TID(n),key=msg.act||('e:'+TID(job.e));
+ handle(n,r,job,ep){let msg=job.msg;const tr=msg.tr,cfg=n.cfg,nid=TID(n),key=msg.act||('e:'+TID(job.e)),sgx=this.rep(n),ev=sgx&&sgx.cfg?sgx.cfg.emitVer|0:0;
   const end=res=>this.jobEnd(n,r,job,res);
-  tr.sv[nid]=1;
+  tr.sv[nid]=msg.ty||'';
   if(msg.op==='undo'){for(const a of cfg.actions){const k=nid+':'+a.id;if(tr.fx[k]>0)tr.fx[k]--}if(tr.fx[key]>0)tr.fx[key]--;this.tlog(tr,'undo',n.id);return end({ok:true})}
+  /* contract: a version newer than this consumer understands is handled like malformed data, except that the sender did nothing wrong */
+  if(cfg.contract&&!msg.bad){const mx=tyMax(cfg.contract,msg.ty);if(mx!=null&&(msg.ver||1)>mx){r.c.ctr=(r.c.ctr|0)+1;this.tlog(tr,'contract',n.id,(msg.ty||'message')+' v'+(msg.ver||1)+', understands v'+mx);
+    if(cfg.badData==='reject')return end({ok:false,err:'contract',retry:false});
+    if(cfg.badData==='crash')return end({ok:false,err:'poison',retry:true});
+    msg=Object.assign({},msg,{bad:true})}}
   if(msg.bad){if(cfg.badData==='reject'){tr.rejected=1;this.tlog(tr,'reject',n.id);return end({ok:false,err:'bad',retry:false})}
    if(cfg.badData==='crash'){this.tlog(tr,'poison',n.id);return end({ok:false,err:'poison',retry:true})}}
   /* inbox + DB transaction: the row is marked processed in the same commit as the writes, so a re-run after a late failure is a no-op */
   if(job.ib&&tr.ibd&&tr.ibd[nid+'|'+key]){this.A.dedup++;r.c.dedup=(r.c.dedup|0)+1;this.tlog(tr,'dedup',n.id);return end({ok:true,dedup:true})}
   if(cfg.idempotent&&tr.fx[key]>0){this.A.dedup++;r.c.dedup=(r.c.dedup|0)+1;this.tlog(tr,'dedup',n.id);return end({ok:true,dedup:true})}
-  if(msg.ord){const k2=job.e.id+'|'+msg.key,l=r.lastSeq.get(k2);if(l!==undefined&&l>msg.seq){r.c.ooo=(r.c.ooo|0)+1;tr.ooo=1;this.tlog(tr,'ooo',n.id)}else r.lastSeq.set(k2,msg.seq)}
+  if(msg.ord){const k2=job.e.id+'|'+msg.key,l=r.lastSeq.get(k2);if(l!==undefined&&l>msg.seq){r.c.ooo=(r.c.ooo|0)+1;this.tlog(tr,'ooo',n.id);
+   /* handling out of order only does harm if something it writes can be overwritten: a handler whose every write is version-checked is safe */
+   if(!(cfg.actions.length&&cfg.actions.every(a=>{if(a.op==='read')return true;const d=this.edge(a.edge)&&this.node(this.edge(a.edge).to);return a.guard&&d&&KIND(d)==='store'})))tr.ooo=1}else r.lastSeq.set(k2,msg.seq)}
   const acts=cfg.actions,N=acts.length;let failAt=-1;
   if(r.once>0||this.chance(this.er(n))){if(r.once>0)r.once--;failAt=Math.floor(this.rand()*(N+2))}
   const ctx={i:0,tx:[],ob:[],done:[],deg:false,pf:false,dd:false};
   const fail=res=>{if(ctx.dd)this.lose(tr,'its de-dupe row was committed but the work then failed: every redelivery is now skipped as a duplicate',n.id);this.tlog(tr,'hfail',n.id,res.err);end(res)};
   const skip=()=>{this.tlog(tr,'ddskip',n.id);end({ok:true,dedup:true})};
   const onRes=(a,e,m,res)=>{
-   if(res.ok){if(res.dup)return skip();ctx.pf=false;if(m.op==='prepare')ctx.tx.push({e,k:m.act});else if(m.op!=='read'){ctx.done.push({e,m,a});if(res.dd)ctx.dd=true}return step()}
+   if(res.ok){if(res.dup)return skip();ctx.pf=false;if(m.op==='prepare')ctx.tx.push({e,k:m.act,m});else if(m.op!=='read'){ctx.done.push({e,m,a});if(res.dd)ctx.dd=true}return step()}
    r.c.aerr=(r.c.aerr|0)+1;this.tlog(tr,'afail',e.to,res.err);
    if(a.onError==='continue'){ctx.deg=true;ctx.pf=true;return step()}
    const up={ok:false,err:res.err==='bad'?'bad':'error',retry:res.retry!==false,cause:res.err};
@@ -717,9 +739,13 @@ class Sim{
    if(ctx.i===failAt)return fail({ok:false,err:'error',retry:true});
    if(ctx.i>=N)return commit();
    const a=acts[ctx.i++],e=this.edge(n.tid?a.edge+'@'+n.rep.id:a.edge);if(!e)return step();
+   if(a.types&&!tyIn(a.types,msg.ty))return step();
    if(a.when==='fallback'&&!ctx.pf)return step();
    const dst=this.node(e.to),dk=KIND(dst);
-   const m={tr,key:msg.key,seq:msg.seq,bad:msg.bad,act:nid+':'+a.id,op:a.op||'write',ord:msg.ord,os:msg.ord?(msg.os||TID(job.e)):undefined};
+   const m={tr,key:msg.key,seq:msg.seq,bad:msg.bad,ty:msg.ty,ver:msg.ver,act:nid+':'+a.id,op:a.op||'write',ord:msg.ord,os:msg.ord?(msg.os||TID(job.e)):undefined};
+   if(a.as){const t=tyParse(a.as).mix[0];if(t){m.ty=t.ty;m.ver=t.ver}}
+   if(ev>0)m.ver=ev;
+   if(a.guard&&dk==='store'&&m.op==='write')m.vc=true;
    if(r.actOnce[a.id]||this.chance(a.failPct)){r.actOnce[a.id]=0;return onRes(a,e,m,{ok:false,err:'error',retry:true})}
    const o={timeout:a.timeout,retries:a.retries,backoff:a.backoff,brk:a.breaker?(r.brk[a.id]||(r.brk[a.id]={f:0,until:0,name:n.name+' → '+dst.name})):null};
    if(a.await===false){this.call(e,m,o,res=>{if(!res.ok)this.lose(tr,'fire-and-forget call failed',e.to)});ctx.pf=false;return step()}
@@ -732,12 +758,12 @@ class Sim{
     if(msg.op!=='read'){const p=tr.fx[key]|0;tr.fx[key]=p+1;if(p>0&&!acts.some(a=>a.op!=='read')){tr.dupK=key;this.tlog(tr,'duphandle',n.id)}}
     this.tlog(tr,'done',n.id);end({ok:true,deg:ctx.deg})};
    if(!ctx.tx.length&&!ctx.ob.length)return fin();
-   const groups=new Map();for(const x of ctx.tx){let g=groups.get(x.e.to);if(!g)groups.set(x.e.to,g={e:x.e,keys:[],tbs:[]});g.keys.push(x.k);g.tbs.push(x.e.cfg.table||'')}
+   const groups=new Map();for(const x of ctx.tx){let g=groups.get(x.e.to);if(!g)groups.set(x.e.to,g={e:x.e,keys:[],tbs:[],ms:[]});g.keys.push(x.k);g.tbs.push(x.e.cfg.table||'');g.ms.push(x.m)}
    let gl=[...groups.values()];const ob=ctx.ob.length?ctx.ob:null;
    if(ob&&!gl.length){const se=this.outs(n.id).find(x=>KIND(this.node(x.to))==='store');
-    if(!se){for(const o of ob)this.obPush(n,o,null);return fin()}gl=[{e:se,keys:[],tbs:[]}]}
+    if(!se){for(const o of ob)this.obPush(n,o,null);return fin()}gl=[{e:se,keys:[],tbs:[],ms:[]}]}
    let gi=0;const next=()=>{if((r.epoch!==ep||job.dead))return;if(gi>=gl.length){if(job.ib)(tr.ibd||(tr.ibd={}))[nid+'|'+key]=1;return fin()}const g=gl[gi++];
-    const cm={tr,key:msg.key,seq:msg.seq,bad:msg.bad,op:'commit',keys:g.keys,tbs:g.tbs,act:null,ob:gi===1?ob:null,svc:n.id,ord:msg.ord,os:msg.ord?(msg.os||TID(job.e)):undefined};
+    const cm={tr,key:msg.key,seq:msg.seq,bad:msg.bad,ty:msg.ty,ver:msg.ver,op:'commit',keys:g.keys,tbs:g.tbs,ms:g.ms,act:null,ob:gi===1?ob:null,svc:n.id,ord:msg.ord,os:msg.ord?(msg.os||TID(job.e)):undefined};
     this.call(g.e,cm,{timeout:1000,retries:0,backoff:0},res=>{if((r.epoch!==ep||job.dead))return;if(!res.ok){this.tlog(tr,'rollback',g.e.to,res.err);return fail({ok:false,err:'error',retry:true,cause:res.err})}if(res.dup)return skip();next()})};
    next()};
   step()}
@@ -770,8 +796,9 @@ class Sim{
  /* ---------- log (Kafka-style) ---------- */
  logWork(n,r,msg,e){const key=msg.act||('e:'+TID(e)),tr=msg.tr;
   if(!this.effect(n,r,msg,key))return{ok:true};
-  this.syncGroups(n,r);const p=msg.key==null?0:hashStr(String(msg.key))%r.parts.length,P=r.parts[p];
-  P.log.push({tr,key:msg.key,seq:(r.ks[msg.key]=(r.ks[msg.key]|0)+1),bad:msg.bad});tr.pending+=r.groups.size;
+  this.syncGroups(n,r);/* the publisher chooses the partition key: the entity (ordered per entity), none (round-robin: an entity's messages spread over partitions and can overtake each other), or something coarser such as a tenant (ordered, but a few partitions take all the load) */
+  const np=r.parts.length,pk=e&&e.cfg.pkey,p=msg.key==null?0:pk==='none'?(r.rrp=((r.rrp|0)+1)%np):pk==='coarse'?hashStr('b'+hashStr(String(msg.key))%Math.max(1,e.cfg.pkeyN|0||3))%np:hashStr(String(msg.key))%np,P=r.parts[p];
+  P.log.push({tr,key:msg.key,seq:(r.ks[msg.key]=(r.ks[msg.key]|0)+1),bad:msg.bad,ty:msg.ty,ver:msg.ver});tr.pending+=r.groups.size;
   this.retain(n,r,p);this.trim(r,p);this.pumpLog(n,r);return{ok:true}}
  /* subscriptions that share a "consumer group id" are one group: they share offsets and split the partitions */
  syncGroups(n,r){const outs=this.outs(n.id);let stale=false;
@@ -817,7 +844,7 @@ class Sim{
    if(block||(res.retry!==false&&k<sub.maxAttempts)){this.tlog(tr,'redeliver',e.to,res.err);return again(k+1,sub.backoff*(block?1:k))}
    if(sub.onExhaust==='dlq'){g.dlq++;tr.parked=1;this.tlog(tr,'dlq',e.to)}else this.lose(tr,'dropped after '+k+' failed attempt(s)',e.to);
    complete()};
-  this.send(e,{tr,key:ent.key,seq:ent.seq,bad:ent.bad,act:null,op:'write',ord:true},fin);
+  this.send(e,{tr,key:ent.key,seq:ent.seq,bad:ent.bad,ty:ent.ty,ver:ent.ver,act:null,op:'write',ord:true},fin);
   this.at(sub.timeout||5000,()=>{if(!done){this.tlog(tr,'ptimeout',e.to);fin({ok:false,err:'timeout',retry:true})}})}
  rebalance(n){const r=this.rt(n);if(!r.groups)return;this.log('fault',n.name+': consumer-group rebalance (in-flight messages will be redelivered)');
   const snap=[];for(const g of r.groups.values()){g.epoch++;snap.push([g,g.busy.slice()])}
@@ -827,7 +854,7 @@ class Sim{
  queueWork(n,r,msg,e){const key=msg.act||('e:'+TID(e)),tr=msg.tr;
   if(r.ready.length+r.infl>=(n.cfg.capacity||1e9)){r.c.rej=(r.c.rej|0)+1;return{ok:false,err:'overload',retry:true}}
   if(!this.effect(n,r,msg,key))return{ok:true};
-  r.ready.push({tr,key:msg.key,seq:(r.ks[msg.key]=(r.ks[msg.key]|0)+1),bad:msg.bad,n:0});tr.pending++;this.pumpQ(n,r);return{ok:true}}
+  r.ready.push({tr,key:msg.key,seq:(r.ks[msg.key]=(r.ks[msg.key]|0)+1),bad:msg.bad,ty:msg.ty,ver:msg.ver,n:0});tr.pending++;this.pumpQ(n,r);return{ok:true}}
  pumpQ(n,r){if(this.off(n)||n.fault.pause)return;const outs=this.outs(n.id);if(!outs.length)return;const fifo=n.cfg.fifo;
   while(r.ready.length){if(fifo&&r.infl>0)return;let el=null;
    for(const e of outs){const sub=e.cfg.sub||SUBD,c=this.node(e.to);if((r.win[e.id]|0)>=(fifo?1:(sub.prefetch||10))||!c||!this.isUp(c)||this.wt(c)<=0)continue;(el||(el=[])).push(e)}
@@ -848,7 +875,7 @@ class Sim{
     rel();this.at(free?250:sub.backoff,()=>{r.ready.push(ent);this.pumpQ(n,r)});return this.pumpQ(n,r)}
    if(sub.onExhaust==='dlq'){r.c.dlq=(r.c.dlq|0)+1;tr.parked=1;this.tlog(tr,'dlq',e.to)}else this.lose(tr,'dropped after '+ent.n+' failed attempt(s)',e.to);
    gone()};
-  this.send(e,{tr,key:ent.key,seq:ent.seq,bad:ent.bad,act:null,op:'write',ord:true},fin);
+  this.send(e,{tr,key:ent.key,seq:ent.seq,bad:ent.bad,ty:ent.ty,ver:ent.ver,act:null,op:'write',ord:true},fin);
   this.at(sub.timeout||5000,()=>{if(!done){this.tlog(tr,'ptimeout',e.to);fin({ok:false,err:'timeout',retry:true})}})}
 
  /* ---------- pub/sub, proxy, cache ---------- */
@@ -856,7 +883,7 @@ class Sim{
   if(this.off(n)||this.chance(this.er(n))){r.c.err++;return reply({ok:false,err:this.off(n)?'down':'error',retry:true})}
   r.c.ok++;const tr=msg.tr;
   if(this.effect(n,r,msg,msg.act||('e:'+TID(e))))for(const o of this.outs(n.id))
-   this.call(o,{tr,key:msg.key,seq:msg.seq,bad:msg.bad,act:null,op:'write'},{timeout:n.cfg.timeout||2000,retries:n.cfg.retries|0,backoff:200},res=>{
+   this.call(o,{tr,key:msg.key,seq:msg.seq,bad:msg.bad,ty:msg.ty,ver:msg.ver,act:null,op:'write'},{timeout:n.cfg.timeout||2000,retries:n.cfg.retries|0,backoff:200},res=>{
     if(!res.ok&&res.err!=='bad'){r.c.undeliv=(r.c.undeliv|0)+1;this.lose(tr,'pub/sub delivery failed — no retention to retry from',o.to)}});
   reply({ok:true})})}
  proxyRecv(n,r,msg,reply,e){const cfg=n.cfg;
@@ -920,6 +947,7 @@ class Sim{
   const tr={id:++this.trN,src,t0:this.t,pending:0,fx:{},sv:{},ev:[],calls:0,ok:true,err:null,clientDone:false,final:false,lost:null};
   const ki=Math.floor(this.rand()*Math.max(1,c.keys|0)),key=(c.keyspace||src)+'#'+ki,seq=(r.seq[ki]=(r.seq[ki]|0)+1);
   const msg={tr,key,seq,bad:this.chance(c.badPct)||this.chance(n.fault.badPct),act:null,op:c.op||'write'};
+  if(c.types){const tp=tyParse(c.types);if(tp.mix.length){let u=this.rand()*tp.tot,x=tp.mix[0];for(const t of tp.mix){if((u-=t.w)<0){x=t;break}}msg.ty=tr.ty=x.ty;msg.ver=x.ver}}
   tr.key=key;tr.bad=msg.bad;this.A.created++;this.by(src).created++;r.c.in++;
   const outs=this.outs(src);
   if(!outs.length){tr.clientDone=true;tr.ok=false;tr.err='no target';r.c.err++;this.finalize(tr);return tr}
@@ -1385,7 +1413,7 @@ Select a connection that leaves a table (the dashed line from its ●) to change
  B.sc('Burst: 5× traffic (15 s)','More arrives than the polling loops drain per interval.',{[sa]:{surge:5},[sb]:{surge:5}},{heal:15});
 });
 
-ex('Two builds reading one topic (A/B server groups)','Operations','Two server groups of the same consumer both read a topic. Shared consumer group, separate groups, or separate groups with a de-dupe table?',
+ex('Two builds reading one topic (A/B server groups)','Operations','Two server groups of the same consumer both read a topic. Shared consumer group, separate groups, or separate groups made safe by a de-dupe table or a version check?',
 `Each box is one consumer application with two server groups, v1 and v2, at 50% each.
 
 A · Shared consumer group. The two builds split the partitions between them. Every message is handled once and each key stays on one build, so order is kept.
@@ -1394,21 +1422,23 @@ B · A/B, separate consumer groups. v2 is marked "A/B: own consumer group", so B
 
 C · Separate groups plus a shared de-dupe table. Both builds still read everything, but each first inserts the message id into "dedupe" in the same transaction as its write. Whichever build gets there first wins; the other hits the unique key and skips.
 
+D · Separate groups plus a version check. Both builds read everything and both try to write, but the write is "only if newer": the database refuses an update that is not newer than the row it holds. The second copy of each update and any late, older update change nothing. No extra table, but it only protects this one write.
+
 • At rest, look at the duplicate column for B in the Consistency audit.
-• "v2 is slow ×8": B now also shows "out of order" — stale values overwriting fresh ones at the database. A just lags on half its partitions. C stays clean.
+• "v2 is slow ×8": B now also shows "out of order" — stale values overwriting fresh ones at the database. A just lags on half its partitions. C and D stay clean (select view-db-D to see how many writes it refused).
 • "v2 is a bad build (30% errors)": compare what each design loses or parks.
 • Select a box and toggle "A/B: own consumer group" on a server group to switch a lane between the designs.`,B=>{
- const lane=(L,y,title,own,dd)=>{B.note(L+' · '+title,20,y-100);
+ const lane=(L,y,title,own,dd,guard)=>{B.note(L+' · '+title,20,y-100);
   const s=B.n('source','events-'+L,20,y,{rateMin:20,rateMax:30,keys:12}),t=B.n('kafka','topic-'+L,250,y,{partitions:4});
   const g=B.app('projector-'+L,490,y-70,330,162,{clusters:[{name:'main',sgs:[{name:'v1',weight:50,regions:[['region-1',2]]},{name:'v2',weight:50,consume:own?'own':'shared',regions:[['region-1',2]]}]}]});
   const c=B.n('worker','projector-'+L,567,y,{concurrency:8,procMs:15}),d=B.n('sql','view-db-'+L,920,dd?y-20:y);
-  B.e(s,t);B.e(t,c);if(dd){const tD=B.t(d,'dedupe','dedupe'),tV=B.t(d,'view','data');B.e(c,d,{cfg:{table:tD},act:{tx:true}});B.e(c,d,{cfg:{table:tV},act:{tx:true}})}else B.e(c,d);
+  B.e(s,t);B.e(t,c);if(dd){const tD=B.t(d,'dedupe','dedupe'),tV=B.t(d,'view','data');B.e(c,d,{cfg:{table:tD},act:{tx:true}});B.e(c,d,{cfg:{table:tV},act:{tx:true}})}else B.e(c,d,guard?{act:{guard:true}}:undefined);
   return{v2:g.clusters[0].sgs[1],v1:g.clusters[0].sgs[0]}};
- const a=lane('A',110,'Shared consumer group — the builds split the partitions',false,false),b=lane('B',370,'A/B with separate consumer groups — both builds read everything',true,false),c=lane('C',630,'Separate groups + shared de-dupe table',true,true);
- const each=f=>Object.assign({},f(a),f(b),f(c));
+ const a=lane('A',110,'Shared consumer group — the builds split the partitions',false,false),b=lane('B',370,'A/B with separate consumer groups — both builds read everything',true,false),c=lane('C',630,'Separate groups + shared de-dupe table',true,true),d=lane('D',890,'Separate groups + version check on the write',true,false,true);
+ const each=f=>Object.assign({},f(a),f(b),f(c),f(d));
  B.sc('v2 is slow ×8','The new build takes eight times longer per message.',each(x=>({[x.v2.id]:{latencyMult:8}})));
  B.sc('v2 is a bad build (30% errors, 20 s)','The new build fails a third of its messages.',each(x=>({[x.v2.id]:{errorRate:30}})),{heal:20});
- B.sc('One v1 instance dies','Half of v1\'s capacity is gone and its in-flight messages are redelivered.',{},{triggers:[a,b,c].map(x=>({group:x.v1.id,what:'kill'}))});
+ B.sc('One v1 instance dies','Half of v1\'s capacity is gone and its in-flight messages are redelivered.',{},{triggers:[a,b,c,d].map(x=>({group:x.v1.id,what:'kill'}))});
 });
 
 ex('Clusters and regions: what a shard or a data centre takes with it','Availability','The same API deployed as one big cluster or as three shards, each spread over two regions.',
@@ -1435,6 +1465,84 @@ B · Three clusters (shards). Each key always lands on the same cluster — the 
  B.sc('Region us-east is lost (15 s)','Half of every server group\'s instances disappear.',east,{heal:15});
  B.sc('Hot key range: 3× traffic (15 s)','Demand beyond what the instances can serve.',{[ca]:{surge:3},[cb]:{surge:3}},{heal:15});
 });
+ex('Message types: filter on the consumer, branch in the handler','Messaging','One topic carries three kinds of order event. Consumers pick the types they care about, and a router sends each type somewhere different.',
+`The source "order-events" sends a mix of typed messages: OrderCreated 60%, OrderUpdated 30%, OrderCancelled 10% (select it to change the mix).
+
+Three consumers read the same topic, each in its own consumer group:
+
+• billing has a filter on its subscription: only OrderCreated and OrderCancelled. Its two actions branch on the type: charge the card for OrderCreated, call the refund API for OrderCancelled.
+• search-indexer has no filter and indexes every event.
+• router publishes OrderCreated to "shipping.requests" (re-typed as ShipmentRequested) and OrderCancelled to "cancellations". OrderUpdated matches neither action, so nothing is sent.
+
+Things to notice:
+• A consumer-side filter does not reduce what is read. Select billing: "Filtered out" climbs, and the filtered messages still pass through its partitions.
+• Select a connection leaving the topic to edit its filter. Select a service and open an action to edit "Only for message types" and "Send as type".
+• "Card provider down (15 s)": only OrderCreated is affected; cancellations keep flowing through the same consumer.
+• "Refund API down (15 s)": the reverse. One slow type holds up the other types behind it on the same partition.
+• Pause, then use ▶ 1 on the source a few times to follow single messages of different types.`,B=>{
+ const s=B.n('source','order-events',20,220,{rateMin:20,rateMax:30,keys:60,types:'OrderCreated:60, OrderUpdated:30, OrderCancelled:10'}),t=B.n('kafka','orders',270,220,{partitions:4});
+ const bill=B.n('worker','billing',560,60,{concurrency:8,procMs:10}),card=B.n('payment','card-provider',860,10,{latency:80,idempotent:true}),refund=B.n('ext','refund-api',860,110,{latency:80,idempotent:true});
+ const idx=B.n('worker','search-indexer',560,220,{concurrency:8,procMs:5}),se=B.n('search','order-index',860,220);
+ const rt=B.n('worker','router',560,400,{concurrency:8,procMs:3}),ts=B.n('kafka','shipping.requests',860,350),tc=B.n('kafka','cancellations',860,460);
+ const ws=B.n('worker','shipping',1130,350),ds=B.n('sql','shipments-db',1390,350),wc=B.n('worker','cancellation-desk',1130,460),dc=B.n('sql','cancellations-db',1390,460);
+ B.e(s,t);B.e(t,bill,{cfg:{types:'OrderCreated, OrderCancelled'},sub:{maxAttempts:8,backoff:1000}});
+ B.e(bill,card,{act:{types:'OrderCreated',timeout:1500}});B.e(bill,refund,{act:{types:'OrderCancelled',timeout:1500}});
+ B.e(t,idx);B.e(idx,se);
+ B.e(t,rt);B.e(rt,ts,{act:{types:'OrderCreated',as:'ShipmentRequested'}});B.e(rt,tc,{act:{types:'OrderCancelled'}});
+ B.e(ts,ws);B.e(ws,ds);B.e(tc,wc);B.e(wc,dc);
+ B.sc('Card provider down (15 s)','Only the OrderCreated branch of billing needs it.',{[card]:{down:true}},{heal:15});
+ B.sc('Refund API down (15 s)','Only one message in ten needs it, but it shares partitions with the rest.',{[refund]:{down:true}},{heal:15});
+ B.sc('Burst: 4× traffic (15 s)','Filtered messages still have to be read.',{[s]:{surge:4}},{heal:15});
+});
+
+ex('Contract versions: the producer ships v2 first','Operations','A new build of the producer changes the message format. What each kind of consumer does with a version it does not understand.',
+`Each lane is the same pipeline: an order API (an application with two builds) publishes OrderPlaced to a topic, and a fulfilment consumer writes it to its database.
+
+Build v1 sends contract version 1. Build v2 is not running yet; when it is, it sends contract version 2 (select a box, then server group v2: "Sends contract version"). Each consumer declares the newest version it understands in "Contract".
+
+A · Consumer understands v1 and validates: a v2 message is rejected and goes straight to the dead-letter queue.
+B · Consumer understands v1 and throws: a v2 message is retried three times, holding up its partition each time, and then goes to the dead-letter queue.
+C · Consumer understands v1 and does not check: v2 messages are processed with v1 code and bad data is written (corrupt).
+D · Consumer was upgraded first and understands v2: nothing happens.
+
+• Apply "Canary: roll out v2 of the order API". As v2 takes 5%, 25%, 50% and 100% of the traffic, the same share of messages fails in A, B and C.
+• The canary never rolls back. Auto-rollback watches the new build's own error rate, and the order API is healthy: the damage is in another team's consumer, later.
+• The Design review tab flags the mismatch before anything is deployed.
+• Fix a lane by changing the consumer's contract to "*@2" and applying the scenario again.`,B=>{
+ const lane=(L,y,title,cfg)=>{B.note(L+' · '+title,20,y-100);
+  const c=B.n('client','checkout-'+L,20,y,{rateMin:15,rateMax:25,keys:60,types:'OrderPlaced'});
+  const g=B.app('order-api-'+L,250,y-70,330,162,{clusters:[{name:'main',sgs:[{name:'v1',weight:100,regions:[['region-1',2]]},{name:'v2',weight:0,stopped:true,emitVer:2,regions:[['region-1',2]]}]}]});
+  const a=B.n('service','order-api-'+L,327,y,{procMs:8,concurrency:16}),t=B.n('kafka','orders-'+L,680,y),w=B.n('worker','fulfilment-'+L,940,y,Object.assign({concurrency:8,procMs:10},cfg)),d=B.n('sql','fulfilment-db-'+L,1200,y);
+  B.e(c,a);B.e(a,t);B.e(t,w);B.e(w,d);return{v1:g.clusters[0].sgs[0],v2:g.clusters[0].sgs[1]}};
+ const ls=[lane('A',110,'Consumer validates the version and rejects',{contract:'*@1',badData:'reject'}),lane('B',370,'Consumer throws on the unknown version',{contract:'*@1',badData:'crash'}),
+  lane('C',630,'Consumer does not check and processes it anyway',{contract:'*@1',badData:'ignore'}),lane('D',890,'Consumer was upgraded first',{contract:'*@2',badData:'reject'})];
+ B.sc('Canary: roll out v2 of the order API','5% → 25% → 50% → 100%, six seconds per step.','',{faults:{},triggers:ls.map(x=>({group:x.v2.id,what:'cutover',from:x.v1.id,mode:'canary'}))});
+ B.sc('Blue/green: switch to v2 at once','Every message is version 2 from one moment to the next.','',{faults:{},triggers:ls.map(x=>({group:x.v2.id,what:'cutover',from:x.v1.id,mode:'bluegreen'}))});
+ B.sc('Roll back to v1','Messages already published as version 2 are still in the topic or the DLQ.','',{faults:{},triggers:ls.map(x=>({group:x.v2.id,what:'cutover',from:x.v1.id,mode:'rollback'}))});
+});
+
+ex('Partition keys and version checks: keeping updates in order','Consistency','The same stream of updates published with the right key, no key, and a coarse key, and what a version check on the write repairs.',
+`Each lane sends updates for a handful of entities through a six-partition topic to a consumer that writes the latest state to a database. Only the partition key (on the connection into the topic) and the write differ.
+
+A · Keyed by entity. All updates for one entity share a partition and are consumed in order.
+B · No key. Updates are spread round-robin, so two updates for the same entity sit on different partitions and are handled at the same time. Whichever finishes last wins, even if it is the older one.
+C · No key, but the write is "only if newer". Updates still arrive out of order, and the database refuses the stale ones.
+D · A coarse key with 2 values (think tenant). Order is kept, but only 2 of the 6 partitions are ever used, so the consumer can work on 2 messages at a time however many workers it has.
+
+• At rest B already shows "out of order" now and then; C and A do not.
+• "Consumer slow ×6": B gets much worse, C stays correct, and D falls far behind because it has a third of the parallelism.
+• "Broker delivers duplicates (30%)": the version check in C also absorbs the repeats; A, B and D write twice.
+• Select the connection into a topic to change its partition key. Select a consumer and open its action to toggle "Only if newer".`,B=>{
+ const lane=(L,y,title,pk,guard)=>{B.note(L+' · '+title,20,y-56);
+  const s=B.n('source','updates-'+L,20,y,{rateMin:25,rateMax:35,keys:8}),t=B.n('kafka','topic-'+L,280,y,{partitions:6}),w=B.n('worker','projector-'+L,560,y,{concurrency:8,procMs:20}),d=B.n('sql','view-db-'+L,840,y);
+  const e0=B.e(s,t,pk?{cfg:pk}:undefined),e1=B.e(t,w);B.e(w,d,guard?{act:{guard:true}}:undefined);return{s,w,e1}};
+ const ls=[lane('A',70,'Keyed by entity',null,false),lane('B',230,'No partition key',{pkey:'none'},false),lane('C',390,'No partition key + version check on the write',{pkey:'none'},true),lane('D',550,'Coarse key: 2 tenants on 6 partitions',{pkey:'coarse',pkeyN:2},false)];
+ const each=f=>Object.assign({},...ls.map(f));
+ B.sc('Consumer slow ×6 (20 s)','Each message takes six times longer to handle.',each(x=>({[x.w]:{latencyMult:6}})),{heal:20});
+ B.sc('Broker delivers duplicates (30%)','A third of the messages are delivered twice.',each(x=>({[x.e1]:{dup:30}})));
+ B.sc('Burst: 3× traffic (15 s)','More updates per entity per second: more chances to overtake.',each(x=>({[x.s]:{surge:3}})),{heal:15});
+});
+
 if(typeof module!=='undefined')module.exports={EXAMPLES};
 </script>
 <script id="ui">
@@ -1471,6 +1579,7 @@ const CF={
   ['pattern','Traffic pattern','sel',{steady:'Steady (random in range)',wave:'Sine wave',bursty:'Bursty (max 20% of period)',ramp:'Ramp min → max'}],['period','Pattern period (s)','num',P(1,600,1)],
   ['spacing','Arrivals','sel',{poisson:'Random (Poisson)',even:'Evenly spaced'}],['op','Request type','sel',{write:'Command (side effects)',read:'Query (read-only)'},'Queries are never counted as side effects by the consistency audit.'],
   ['keys','Distinct entity keys','num',P(1,100000,1),'e.g. order or user IDs. Partitioning, ordering and caching are per key.'],['keyspace','Key namespace','txt',null,'Sources with the same namespace act on the same entities (needed to detect stale reads between a writer and a reader).'],
+  ['types','Message types (mix)','txt',{ph:'OrderCreated:70, OrderCancelled:30'},'The kinds of message this source sends and their share, as Name:weight. Add @version for a contract version other than 1, e.g. OrderCreated@2:70. Leave empty for untyped traffic. Consumers can filter on the type, actions can be limited to a type, and a service can declare which versions it understands.'],
   ['badPct','Malformed data %','num',P(0,100,0.5)],['dupPct','Client double-submit %','num',P(0,100,0.5),'The same request is sent again a few ms later (double click, duplicate webhook).'],
   ['timeout','Client timeout (ms)','num',P(1,60000,50)],['retries','Client retries','num',P(0,10,1)],['backoff','Retry backoff base (ms)','num',P(0,10000,50),'Exponential with jitter: base × 2^attempt.']],
  sched:[['mode','Trigger','sel',{schedule:'Batch on a schedule',rate:'Steady rate'}],
@@ -1482,7 +1591,8 @@ const CF={
   ['queueCap','Request queue size','num',P(0,1000000,1),'Requests waiting for a worker. When full, new requests are rejected immediately (load shedding).'],
   ['respond','Responds to caller','sel',{after:'After all actions (sync)',ack:'Immediately (202 Accepted)'},'"Immediately" acknowledges first and does the work afterwards from memory: fast, but a crash or error loses accepted work.'],
   ['idempotent','Idempotent consumer (de-dupe)','bool',null,'Remembers completed request IDs and skips repeats. Does not protect against two copies running at the same time.'],
-  ['badData','Bad data','sel',{reject:'Validate & reject (not retried)',crash:'Throws (retryable → poison)',ignore:'Process anyway'}],
+  ['badData','Bad data / unknown contract version','sel',{reject:'Validate & reject (not retried)',crash:'Throws (retryable → poison)',ignore:'Process anyway'}],
+  ['contract','Contract: newest version understood','txt',{ph:'OrderCreated@2, *@1'},'Name@N means this handler understands versions up to N of that message type. *@N covers every other type, including untyped messages (which are version 1). A message with a newer version is treated according to "Bad data / unknown contract version": rejected, thrown on (a poison message), or processed anyway and counted as corrupt. Types that are not listed are accepted.'],
   ['rateLimit','Rate limit (req/s, 0 = off)','num',P(0,100000,1)],['restartMs','Restart time after crash (ms)','num',P(0,120000,100)]],
  store:[['latency','Latency per op (ms)','num',P(0,10000,1)],['maxConc','Connection pool / max parallel ops','num',P(1,10000,1),'Throughput ≈ pool ÷ latency.'],['queueCap','Wait queue','num',P(0,100000,1)],
   ['idempotent','Idempotent writes (upsert)','bool',null,'A repeated write for the same request has no additional effect (unique key / upsert).'],['supportsTx','Supports transactions','bool'],['replicaLag','Replication lag for reads (ms)','num',P(0,60000,10),'Reads of a key written within this window return stale data.']],
@@ -1517,7 +1627,8 @@ const GF=[['startMs','Start-up time of a server group (ms)','num',P(0,120000,100
 const GCF=[['canarySteps','Canary steps (% of traffic)','txt',{ph:'5,25,50,100'}],['canaryStepS','Seconds per canary step','num',P(0.5,600,0.5)],['canaryRollback','Auto roll back above error %','num',P(0,100,1),'Checked at the end of each step against the new build\'s own error rate. 0 = never roll back automatically.']];
 const GFF=[['down','Whole application down (every cluster)','bool'],['partition','Network-isolate the application','bool',null,'Every connection that crosses the box boundary becomes a black hole.']];
 const SGF=[['stopped','Not running at baseline','bool',null,'This server group is not deployed until a cut-over starts it.'],
- ['consume','Reading topics','sel',{shared:'Shared consumer group (each message once)',own:'A/B: own consumer group (reads everything)'},'Shared: the server groups split a topic\'s partitions by their traffic share, so each message is handled by one build. Own: this server group also receives every message, so two builds process the same messages side by side.']];
+ ['consume','Reading topics','sel',{shared:'Shared consumer group (each message once)',own:'A/B: own consumer group (reads everything)'},'Shared: the server groups split a topic\'s partitions by their traffic share, so each message is handled by one build. Own: this server group also receives every message, so two builds process the same messages side by side.'],
+ ['emitVer','Sends contract version (0 = unchanged)','num',P(0,99,1),'Every message and call sent by the services of this build carries this contract version. Use it for a build that changes a message format: consumers whose contract stops at an older version cannot read what this build sends.']];
 const SFF=[['down','Server group down','bool'],['instDown','Instances down','num',P(0,200,1),'Capacity drops in proportion, work in flight on them is lost, and requests routed to them fail until the failure is detected.'],
  ['errorRate','Error rate (bad build)','rng',P(0,100,1,'%'),'Every service in this server group fails this share of its requests.'],['latencyMult','Slow build / hosts','rng',P(1,50,0.5,'×')]];
 const POLLF=[['everyMs','Poll interval (ms)','num',P(10,600000,10)],['batch','Rows per poll (batch size)','num',P(1,5000,1)],
@@ -1603,6 +1714,9 @@ function refreshStatic(){for(const n of M.nodes){const el=nodeEls[n.id];if(!el)c
   else if(e.cfg.poll){const p=e.cfg.poll,T=tableOf(a,e.cfg.table);st=(T?T.name+' ':'')+'⟳'+p.everyMs+'ms×'+p.batch}
   else if(e.cfg.sub){if(e.cfg.sub.ack==='before')st='at-most-once';if(ka==='log'&&e.cfg.sub.group)st+=(st?' ':'')+'group:'+e.cfg.sub.group}
   if(b&&KIND(b)==='service'&&b.cfg.inbox)st+=(st?' ':'')+'→ inbox ⟳'+b.cfg.inboxPollMs+'ms×'+b.cfg.inboxBatch;
+  if(ka==='service'){const x=a.cfg.actions.find(x=>x.edge===e.id);if(x){if(x.guard&&KIND(b)==='store')st+=' if-newer';if(x.types)st+=' ['+cut(x.types,18)+']';if(x.as)st+=' as '+cut(x.as,16)}}
+  if(b&&KIND(b)==='log'&&e.cfg.pkey&&e.cfg.pkey!=='entity')st+=(st?' ':'')+(e.cfg.pkey==='none'?'no key':'key÷'+(e.cfg.pkeyN|0||3));
+  if(e.cfg.types&&b&&KIND(b)==='service'&&(MSGK[ka]||e.cfg.poll))st+=(st?' ':'')+'only '+cut(e.cfg.types,20);
   el.stat=st;el.g.classList.toggle('async',!!MSGK[ka]||!!e.cfg.poll);el.g.classList.toggle('faulty',isFaulty(e.fault,EFDEF))}}
 function applySel(){for(const id in nodeEls)nodeEls[id].g.classList.toggle('sel',!!sel&&sel.t==='n'&&sel.id===id);for(const id in edgeEls)edgeEls[id].g.classList.toggle('sel',!!sel&&sel.t==='e'&&sel.id===id);for(const id in groupEls)groupEls[id].g.classList.toggle('sel',!!sel&&sel.t==='g'&&sel.id===id)}
 function select(s){sel=s;applySel();if(sim)updGroups();renderInsp()}
@@ -1731,7 +1845,7 @@ function inspGroup(g){const c=curCluster(g),mc=g.clusters.length>1,nm=h('input',
  const mem=M.nodes.filter(n=>n.group===g.id),gch=()=>{sim.syncFaults();refreshStatic();updGroups();save();sig={}};
  const restruct=()=>{for(const k of g.clusters)fixWeights(k);structural();resetSim();refresh();renderInsp();toast('Deployment layout changed — simulation restarted')};
  const txt=(obj,key,ph)=>{const i=h('input',{type:'text',spellcheck:'false',placeholder:ph});i.value=obj[key];i.oninput=()=>{obj[key]=i.value.trim()||ph;M.rev++;updGroups();save()};return i};
- const copySg=s=>({name:s.name,weight:s.cfg.weight,stopped:s.cfg.stopped,consume:s.cfg.consume,regions:s.regions.map(r=>[r.name,r.instances])});
+ const copySg=s=>({name:s.name,weight:s.cfg.weight,stopped:s.cfg.stopped,consume:s.cfg.consume,emitVer:s.cfg.emitVer,regions:s.regions.map(r=>[r.name,r.instances])});
  const sub=t=>h('div',{style:'font-size:12px;font-weight:600;margin:9px 0 3px'},t);
  insp.append(h('div',{class:'hd'},h('span',{style:'font-size:18px'},'🗂'),nm,h('button',{class:'sm warn',title:'Removes the box only; the components stay',onclick:delSel},'Delete')),
   h('div',{class:'muted',style:'margin:5px 0 2px;font-size:12px'},'Application, deployed as clusters (shards) → server groups (builds) → regions (data centres with instances). Services, proxies and caches inside the box run once per server group; a scheduler inside runs once for the whole application. Databases and brokers are never part of an application.'),
@@ -1796,19 +1910,22 @@ function actionsEditor(n){const box=h('div'),acts=n.cfg.actions;
   const up=()=>{refreshStatic();save();sig={};renderInsp()};
   const fs=[['op','Operation','sel',{write:'Command / write',read:'Query / read'},'Queries have no side effects and are ignored by the consistency audit.']];
   if(dk==='store'&&dst.cfg.supportsTx)fs.push(['tx','In DB transaction','bool',null,'The write is only committed if the whole handler succeeds; otherwise it is rolled back. Commit happens after the last action.']);
+  if(dk==='store')fs.push(['guard','Only if newer (version check)','bool',null,'The write carries the version of the update and the database refuses it unless it is newer than what is stored (UPDATE … WHERE version < :v). An older update arriving late, or the same update delivered twice, changes nothing.']);
   if(MSGK[dk])fs.push(['outbox','Via transactional outbox','bool',null,'The message is written to an outbox table inside the DB transaction and published afterwards by a relay that retries until it succeeds (at-least-once).']);
-  fs.push(['onError','If this action fails','sel',{abort:'Abort → return error',continue:'Ignore & continue (best effort)',compensate:'Compensate: undo earlier actions'},'Abort leaves earlier non-transactional actions in place. Compensate calls the earlier targets again to undo them (a saga).'],
+  fs.push(['types','Only for message types','txt',{ph:'(all types)'},'Branching: this action runs only when the message being handled has one of these types, e.g. "OrderCreated, OrderUpdated". Empty = always.'],
+   ['as','Send as type','txt',{ph:'(same as received)'},'The message or call this action sends gets this type instead of the one being handled, e.g. PaymentRequested or PaymentRequested@2 for contract version 2.'],
+   ['onError','If this action fails','sel',{abort:'Abort → return error',continue:'Ignore & continue (best effort)',compensate:'Compensate: undo earlier actions'},'Abort leaves earlier non-transactional actions in place. Compensate calls the earlier targets again to undo them (a saga).'],
    ['when','Run','sel',{always:'Always',fallback:'Only if the previous action failed'},'Fallback path: put it after an action set to "Ignore & continue".'],
    ['await','Wait for the response','bool',null,'Off = fire-and-forget: the handler moves on immediately and never learns whether the call worked.'],
    ['timeout','Timeout (ms)','num',P(1,120000,10)],['retries','Retries','num',P(0,20,1)],['backoff','Backoff base (ms)','num',P(0,60000,10),'Exponential with jitter.'],
    ['breaker','Circuit breaker','bool',null,'Opens after 5 consecutive failures and fails fast for 5 s before trying again.'],['failPct','Injected failure rate','rng',P(0,100,1,'%'),'Make just this step fail some of the time.']);
-  const chips=[];if(a.op==='read')chips.push(h('span',{class:'chip'},'read'));if(a.tx&&dk==='store')chips.push(h('span',{class:'chip g'},'tx'));if(a.outbox&&MSGK[dk])chips.push(h('span',{class:'chip g'},'outbox'));
+  const chips=[];if(a.op==='read')chips.push(h('span',{class:'chip'},'read'));if(a.tx&&dk==='store')chips.push(h('span',{class:'chip g'},'tx'));if(a.outbox&&MSGK[dk])chips.push(h('span',{class:'chip g'},'outbox'));if(a.guard&&dk==='store')chips.push(h('span',{class:'chip g'},'if newer'));if(a.types)chips.push(h('span',{class:'chip'},'only '+cut(a.types,16)));if(a.as)chips.push(h('span',{class:'chip'},'as '+cut(a.as,16)));
   if(a.onError!=='abort')chips.push(h('span',{class:'chip w'},a.onError==='continue'?'best effort':'saga'));if(a.retries>0)chips.push(h('span',{class:'chip'},'retry×'+a.retries));if(a.breaker)chips.push(h('span',{class:'chip g'},'breaker'));if(a.failPct>0)chips.push(h('span',{class:'chip r'},'⚡'+a.failPct+'%'));
   const mv=d=>ev=>{ev.preventDefault();ev.stopPropagation();const j=i+d;if(j<0||j>=acts.length)return;acts.splice(j,0,acts.splice(i,1)[0]);up()};
   const det=h('details',{class:'act',open:openActs.has(a.id)},
    h('summary',null,h('span',{class:'ix'},i+1),h('span',{class:'tt'},(MSGK[dk]?'publish → ':dk==='store'||dk==='cache'?(a.op==='read'?'read ← ':'write → '):'call → ')+dst.name+(T?' · '+T.name:'')),chips,
     h('button',{class:'sm',title:'Move earlier',onclick:mv(-1)},'↑'),h('button',{class:'sm',title:'Move later',onclick:mv(1)},'↓')),
-   h('div',{class:'bd'},tableSel(e,dst,()=>{structural();renderInsp()}),fs.map(f=>field(a,f,key=>{refreshStatic();save();sig={};if(key!=='timeout'&&key!=='retries'&&key!=='backoff'&&key!=='failPct')renderInsp()})),
+   h('div',{class:'bd'},tableSel(e,dst,()=>{structural();renderInsp()}),fs.map(f=>field(a,f,key=>{refreshStatic();save();sig={};if(key!=='timeout'&&key!=='retries'&&key!=='backoff'&&key!=='failPct'&&key!=='types'&&key!=='as')renderInsp()})),
     h('div',{class:'btns'},h('button',{class:'sm',onclick:()=>{for(const x of sim.reps(n))sim.rt(x).actOnce[a.id]=1;toast('The next run of this action will fail');if(!running)setRun(true)}},'Fail this action once'),
      h('button',{class:'sm warn',onclick:()=>{removeEdge(M,a.edge);structural();renderInsp()}},'Remove'))));
   det.addEventListener('toggle',()=>{if(det.open)openActs.add(a.id);else openActs.delete(a.id)});box.append(det)});
@@ -1818,6 +1935,11 @@ function inspEdge(e){const a=nodeById(e.from),b=nodeById(e.to),ka=KIND(a);
   h('div',{class:'muted',style:'margin:5px 0 2px;font-size:12px'},e.cfg.poll?'Polling loop: '+b.name+' reads the "'+(tableOf(a,e.cfg.table)||{name:'?'}).name+'" table of '+a.name+' in batches. Each row it reads runs '+b.name+'\'s actions.':MSGK[ka]?(ka==='pubsub'?'Push delivery to a subscriber.':'Subscription: '+b.name+' consumes from '+a.name+'.'):'Network link. Faults here happen between the two nodes, whatever state each node is in.'));
  if(ka==='service')insp.append(h('div',{class:'btns'},h('button',{class:'sm',onclick:()=>{const act=a.cfg.actions.find(x=>x.edge===e.id);if(act)openActs.add(act.id);select({t:'n',id:a.id})}},'Edit this action (order, transaction, error handling) in '+a.name)));
  insp.append(sec('Link',[field(e.cfg,['latency','One-way latency (ms)','num',P(0,10000,1)],onCfg)],true));
+ if(KIND(b)==='log'){const pv={pkey:e.cfg.pkey||'entity'},np=b.cfg.partitions|0;
+  insp.append(sec('Partition key',[h('p',{class:'muted',style:'margin:2px 0 6px;font-size:12px'},'Which of the '+np+' partition'+(np===1?'':'s')+' of '+b.name+' a message goes to. Order is only kept within a partition.'),
+   field(pv,['pkey','Publish keyed by','sel',{entity:'The entity (order, user …)',none:'No key (round-robin)',coarse:'A coarser key (tenant, region …)'},'Entity: every message for one entity lands on the same partition, so they are consumed in order. No key: an entity\'s messages are spread over all partitions and consumers can handle them out of order. Coarser key: order is kept, but all entities of one tenant share a partition, so a few partitions carry all the load.'],()=>{e.cfg.pkey=pv.pkey;onCfg();renderInsp()}),
+   pv.pkey==='coarse'?field(e.cfg,['pkeyN','Distinct values of that key','num',P(1,100000,1),'e.g. 3 tenants: at most 3 partitions are ever used.'],onCfg):null],true))}
+ if(KIND(b)==='service'&&(MSGK[ka]||e.cfg.poll))insp.append(sec('Filter by message type',[field(e.cfg,['types','Only these types','txt',{ph:'(all types)'},'Consumer-side filter, e.g. "OrderCreated, OrderCancelled". Other messages are still delivered and acknowledged, so they use the partition or queue slot for a moment and count towards lag, but '+b.name+' does no work for them.'],onCfg)],true));
  if(e.cfg.poll){const p=e.cfg.poll,sum=h('p',{class:'muted',style:'margin:2px 0 6px;font-size:12px'}),upd=()=>{sum.textContent='Every '+p.everyMs+' ms the loop reads up to '+p.batch+' rows: at most '+f1(p.batch/p.everyMs*1000)+' rows/s, and a new row waits up to '+ms(p.everyMs)+' before it is even looked at.'};upd();
   insp.append(sec('Polling — interval and batch',[sum,POLLF.map(f=>field(p,f,()=>{onCfg();upd()}))],true))}
  if(e.cfg.sub)insp.append(sec('Subscription / consumer group',(ka==='queue'?SUBF:SUBF.slice(0,5).concat([GRPF])).map(f=>field(e.cfg.sub,f,()=>{onCfg();sim.syncFaults()})),true));
@@ -1874,7 +1996,7 @@ function liveInsp(){const box=$('#live');if(!box||!sel)return;let rows=[];
   if(k==='log'){const l=sim.lag(r);rows.push(['Consumer lag (max group)',l.lag],['In DLQ',l.dlq],['Consumer groups',r.groups.size])}
   if(k==='queue')rows.push(['Depth',r.ready.length],['In flight',r.infl]);
   if(k==='cache')rows.push(['Keys cached',r.map.size],['Hit ratio',pct((c.hit|0)/Math.max(1,(c.hit|0)+(c.miss|0)))]);
-  const L={rej:'Rejected (overload)',thr:'Throttled (429)',crash:'Crashes',dedup:'Duplicates suppressed',ooo:'Out-of-order handled',aerr:'Action failures',comp:'Compensations',compFail:'Compensation failures',polls:'Polls (relay / table)',reread:'Handled rows read again',obPub:'Outbox rows published',relayRetry:'Outbox relay retries',ibIn:'Inbox rows stored',ibPolls:'Inbox polls',ibDone:'Inbox rows processed',ibRetry:'Inbox retries',ibPark:'Inbox rows parked',fires:'Batches released',dead:'Routed to a dead instance',redeliv:'Redeliveries',expired:'Expired (retention)',dlq:'In DLQ',stale:'Stale reads',w:'Writes applied',u:'  distinct',undo:'Writes undone',undeliv:'Undelivered',hit:'Cache hits',miss:'Cache misses'};
+  const L={rej:'Rejected (overload)',thr:'Throttled (429)',crash:'Crashes',dedup:'Duplicates suppressed',filt:'Filtered out (type not wanted)',ctr:'Contract version not understood',vskip:'Stale / repeat writes refused',ooo:'Out-of-order handled',aerr:'Action failures',comp:'Compensations',compFail:'Compensation failures',polls:'Polls (relay / table)',reread:'Handled rows read again',obPub:'Outbox rows published',relayRetry:'Outbox relay retries',ibIn:'Inbox rows stored',ibPolls:'Inbox polls',ibDone:'Inbox rows processed',ibRetry:'Inbox retries',ibPark:'Inbox rows parked',fires:'Batches released',dead:'Routed to a dead instance',redeliv:'Redeliveries',expired:'Expired (retention)',dlq:'In DLQ',stale:'Stale reads',w:'Writes applied',u:'  distinct',undo:'Writes undone',undeliv:'Undelivered',hit:'Cache hits',miss:'Cache misses'};
   for(const key in L)if(c[key])rows.push([L[key],c[key]]);
   const cv=$('#spark');if(cv)chart(cv,'req/s',[{c:'#4c9aff',l:'in',get:d=>d[0]},{c:'#3fb950',l:'ok',get:d=>d[1]},{c:'#f85149',l:'err',get:d=>d[2]}],r.hist,null,120)}
  else{const e=edgeById(sel.id);if(!e)return;const s=sim.est(e);rows=[['Sent',s.sent],['Failed / lost',s.fail],['Dropped by network',s.drop],['Duplicated by network',s.dup],['Rate',f1(s.rate)+' per s'],['Failure rate',f1(s.frate)+' per s']];
@@ -1952,7 +2074,7 @@ const ACOLS=[['lost','lost','The client was told OK (or the event was accepted),
 const EV={done:['','handler finished in'],fx:['y','effect applied at'],dupfx:['x','DUPLICATE effect applied at'],duphandle:['x','handled a SECOND time by'],dedup:['o','duplicate suppressed (idempotent) at'],undo:['o','compensated / undone at'],afail:['x','call failed →'],hfail:['x','handler failed in'],retry:['o','retrying →'],timeout:['o','caller timed out waiting for'],
  netdrop:['x','request lost on the network →'],respdrop:['x','response lost on the way back from'],reset:['x','connection reset →'],netdup:['o','network duplicated the request →'],lost:['x','LOST at'],dlq:['o','moved to DLQ after failing in'],redeliver:['o','will be redelivered to'],ptimeout:['o','processing timeout, consumer'],
  route:['','routed to'],row:['y','row inserted at'],rowretry:['o','row kept for a later poll after a failure in'],rowpark:['o','row parked after repeated failures at'],reread:['o','handled row could not be marked done and will be read again at'],
- ddrow:['y','message id recorded at'],ddhit:['o','unique key hit: message id already recorded at'],ddskip:['o','duplicate skipped by'],ooow:['x','OLDER update applied after a newer one at'],outbox:['y','outbox row committed by'],inbox:['y','stored in the inbox of'],ibretry:['o','inbox processing failed, row kept for the next poll in'],ibpark:['o','parked in the inbox after repeated failures in'],rollback:['x','commit failed → rolled back at'],reject:['o','rejected as malformed by'],poison:['x','handler threw on malformed data in'],ooo:['o','handled out of order by'],compfail:['x','compensation FAILED at'],dblsubmit:['o','client double-submitted →']};
+ ddrow:['y','message id recorded at'],ddhit:['o','unique key hit: message id already recorded at'],ddskip:['o','duplicate skipped by'],ooow:['x','OLDER update applied after a newer one at'],outbox:['y','outbox row committed by'],inbox:['y','stored in the inbox of'],ibretry:['o','inbox processing failed, row kept for the next poll in'],ibpark:['o','parked in the inbox after repeated failures in'],rollback:['x','commit failed → rolled back at'],reject:['o','rejected as malformed by'],poison:['x','handler threw on malformed data in'],ooo:['o','handled out of order by'],compfail:['x','compensation FAILED at'],dblsubmit:['o','client double-submitted →'],filter:['','filtered out (type not wanted) by'],contract:['x','contract version not understood by'],vskip:['o','stale write refused (stored version is newer) at'],vdup:['o','repeat write refused (same version already stored) at']};
 function nm(id){const n=sim.node(id)||nodeById(String(id).split('@')[0]);return n?n.name:'(removed)'}
 function setHtml(el,html){const st=el.scrollTop;el.innerHTML=html;el.scrollTop=st}
 function updDock(){if($('#dock').classList.contains('min'))return;const A=sim.A,G=sim.G;
@@ -1970,7 +2092,7 @@ function updDock(){if($('#dock').classList.contains('min'))return;const A=sim.A,
   t+=row('All flows',A,A.created)+'</table>';
   let rc='';for(const n of M.nodes){const c=sim.view(n).c;if(c.w)rc+='<tr><td>'+esc(n.name)+'</td><td>'+(c.u|0)+'</td><td>'+c.w+'</td><td class="'+(c.w-(c.u|0)?'b':'z')+'">'+(c.w-(c.u|0))+'</td><td class="'+(c.dedup?'g':'z')+'">'+(c.dedup|0)+'</td><td class="'+(c.undo?'w':'z')+'">'+(c.undo|0)+'</td></tr>'}
   t+='<h3>Reconciliation — what each store, topic and API actually received</h3>'+(rc?'<table><tr><th>Component</th><th title="Requests that produced at least one effect here">distinct requests</th><th>effects applied</th><th title="Effects applied beyond the first for the same request">duplicates</th><th title="Repeats rejected by idempotency">suppressed</th><th title="Removed again by compensation">undone</th></tr>'+rc+'</table>':'<p class="muted">Nothing written yet.</p>');
-  t+='<p class="muted" style="font-size:11.5px;margin:8px 0 0">Hover a column heading for its definition. Suppressed duplicates: '+A.dedup+'. Retries: '+G.retries+'. Timeouts: '+G.timeouts+'.</p>';
+  t+='<p class="muted" style="font-size:11.5px;margin:8px 0 0">Hover a column heading for its definition. Suppressed duplicates: '+A.dedup+'. Stale writes refused by a version check: '+(A.vskip|0)+'. Retries: '+G.retries+'. Timeouts: '+G.timeouts+'.</p>';
   setHtml($('#auL'),t);
   const s=A.anom+'|'+(selTrace?selTrace.id:'')+'|'+A.recent.length+'|'+(A.recent.length?A.recent[A.recent.length-1].id:0);if(sig.au===s)return;sig.au=s;let r='';
   if(selTrace)r+=traceHtml(selTrace,true);
@@ -2001,6 +2123,21 @@ function syncDepth(n,d){if(!n||d>8)return 0;const k=KIND(n),outs=M.edges.filter(
  if(k==='service'){if(n.cfg.respond==='ack')return 1;return 1+n.cfg.actions.reduce((m,a)=>{const e=edgeById(a.edge);if(!e||a.await===false||a.onError==='continue'||(a.outbox&&MSGK[KIND(nodeById(e.to))]))return m;return Math.max(m,syncDepth(nodeById(e.to),d+1))},0)}
  return k==='note'?0:1}
 function lint(){const out=[],add=(lvl,n,title,text)=>out.push({lvl,id:n?n.id:'',title:(n?n.name+' — ':'')+title,text}),load=offeredLoad();
+ for(const e of M.edges){const a=nodeById(e.from),b=nodeById(e.to);if(!a||!b)continue;const kb=KIND(b);
+  if(kb==='log'&&(b.cfg.partitions|0)>1){
+   if(e.cfg.pkey==='none')add('risk',a,'publishes without a partition key','→ '+b.name+': messages for one entity are spread over '+b.cfg.partitions+' partitions, so consumers can handle them out of order. Key by the entity, or make the downstream write check versions.');
+   else if(e.cfg.pkey==='coarse'){const u=Math.min(b.cfg.partitions|0,e.cfg.pkeyN|0||3);add(u<(b.cfg.partitions|0)?'warn':'info',a,'coarse partition key','→ '+b.name+': with '+(e.cfg.pkeyN|0||3)+' distinct key values at most '+u+' of '+b.cfg.partitions+' partitions are used. Order is kept, but consumer parallelism is capped at '+u+' and one busy tenant delays the others on its partition.')}}
+  if(e.cfg.types&&kb==='service'&&(MSGK[KIND(a)]||e.cfg.poll))add('info',b,'filters '+a.name+' by message type','Handles only "'+e.cfg.types+'". Everything else is still read and acknowledged, so it uses partition throughput and shows up as lag even though no work is done.')}
+ for(const n of M.nodes){if(KIND(n)!=='service')continue;
+  if(n.cfg.contract)add('good',n,'declares a message contract','Understands "'+n.cfg.contract+'". A newer version is '+(n.cfg.badData==='reject'?'rejected and not retried: on a topic it goes to the DLQ or is dropped':n.cfg.badData==='crash'?'thrown on and redelivered: a poison message':'processed anyway and counted as corrupt')+'.');
+  for(const a of n.cfg.actions){const e=edgeById(a.edge),d=e&&nodeById(e.to);if(d&&a.guard&&KIND(d)==='store')add('good',n,'version check on write','→ '+d.name+': a write that is not newer than the stored row is refused, so late or repeated messages cannot overwrite newer data.')}}
+ /* a build that sends a newer contract version than something downstream of it understands */
+ for(const g of M.groups)for(const c of g.clusters)for(const sg of c.sgs){const ev=sg.cfg.emitVer|0;if(ev<=0)continue;
+  const seen=new Set(M.nodes.filter(n=>n.group===g.id).map(n=>n.id)),q=[...seen],own=new Set(seen);
+  while(q.length){const id=q.pop();for(const e of M.edges)if(e.from===id&&!seen.has(e.to)){seen.add(e.to);q.push(e.to)}}
+  for(const id of seen){const n=nodeById(id);if(!n||own.has(id)||KIND(n)!=='service'||!n.cfg.contract)continue;
+   const low=[...tyParse(n.cfg.contract).max.values()].filter(v=>v!=null&&v<ev);
+   if(low.length)add('risk',n,'cannot read what '+g.name+' / '+sg.name+' sends','That build sends contract version '+ev+', but this consumer understands up to version '+Math.min(...low)+'. As soon as the build takes traffic its messages fail here. Deploy the consumer first.')}}
  for(const n of M.nodes){const k=KIND(n),ins=M.edges.filter(e=>e.to===n.id),outs=M.edges.filter(e=>e.from===n.id);
   if(k==='service'){const acts=n.cfg.actions.map(a=>{const e=edgeById(a.edge),d=e&&nodeById(e.to);return d?{a,e,d,dk:KIND(d)}:null}).filter(Boolean);
    const w=acts.filter(x=>x.a.op!=='read'),dbw=w.filter(x=>x.dk==='store'),pub=w.filter(x=>MSGK[x.dk]),rem=acts.filter(x=>x.dk==='service'||x.dk==='external'||x.dk==='proxy');
