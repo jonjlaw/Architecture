@@ -6,12 +6,14 @@
 <title>Faultline — system design failure lab</title>
 <style>
 :root{--bg:#0b0f14;--p:#121821;--p2:#18202b;--p3:#1f2937;--bd:#273242;--tx:#d7dde5;--mu:#8391a3;--ac:#4c9aff;--ok:#3fb950;--er:#f85149;--wa:#d29922;--pu:#a371f7}
+:root{--wl:178px;--wr:340px;--hd:280px}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--tx);font:13px/1.45 system-ui,"Segoe UI",sans-serif;display:flex;flex-direction:column;overflow:hidden}
 button,select,input,textarea{font:inherit;color:inherit}
 button{background:var(--p2);border:1px solid var(--bd);border-radius:6px;padding:5px 10px;cursor:pointer;white-space:nowrap}
 button:hover{border-color:var(--ac)}
+button:disabled{opacity:.4;cursor:default;border-color:var(--bd)}
 button.pri{background:#1f4f8f;border-color:#2f6fc4}
 button.warn{background:#4a1d1d;border-color:#7d2a2a}
 button.sm{padding:2px 7px;font-size:12px}
@@ -21,19 +23,21 @@ h3{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mu);
 .muted{color:var(--mu)}
 #top{display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--p);border-bottom:1px solid var(--bd);flex:none;overflow-x:auto}
 .brand{font-weight:700;font-size:15px;margin-right:6px;white-space:nowrap}.brand small{font-weight:400;color:var(--mu);font-size:11px;margin-left:6px}
-#sysName{width:210px;font-weight:600}
+#top>*{flex:none}#sysName{flex:0 1 210px;width:210px;min-width:120px;font-weight:600}
 .sep{width:1px;height:22px;background:var(--bd);margin:0 4px;flex:none}
 .seg{display:flex}.seg button{border-radius:0}.seg button:first-child{border-radius:6px 0 0 6px}.seg button:last-child{border-radius:0 6px 6px 0;border-left:0}
 .seg button.on{background:#1f4f8f;border-color:#2f6fc4}
 #clock{font-variant-numeric:tabular-nums;color:var(--mu);min-width:90px;text-align:right;margin-left:auto;white-space:nowrap}
-#main{flex:1;display:grid;grid-template-columns:178px 1fr 340px;min-height:0}
-#palette{background:var(--p);border-right:1px solid var(--bd);overflow-y:auto;padding:0 8px 12px}
+#main{flex:1;display:grid;grid-template-columns:var(--wl) 6px minmax(0,1fr) 6px var(--wr);grid-template-rows:minmax(0,1fr);min-height:0}
+#main>*{grid-row:1;min-height:0;min-width:0}#palette{grid-column:1}#gL{grid-column:2}#stage{grid-column:3}#gR{grid-column:4}#insp{grid-column:5}
+body.noL #palette,body.noR #insp{display:none}
+#palette{background:var(--p);overflow-y:auto;padding:0 8px 12px}
 .pi{display:flex;align-items:center;gap:7px;padding:5px 7px;border:1px solid transparent;border-radius:6px;cursor:grab;user-select:none}
 .pi:hover{background:var(--p2);border-color:var(--bd)}.pi i{font-style:normal;width:18px;text-align:center}
 #stage{position:relative;overflow:hidden;background:radial-gradient(circle at 1px 1px,#1a2330 1px,transparent 0) 0 0/22px 22px}
 #svg{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:default}
 #fx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-#hint{position:absolute;left:10px;bottom:8px;color:var(--mu);font-size:11.5px;pointer-events:none;background:#0b0f14cc;padding:2px 6px;border-radius:4px}
+#hint{position:absolute;left:10px;bottom:8px;max-width:calc(100% - 150px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--mu);font-size:11.5px;pointer-events:none;background:#0b0f14cc;padding:2px 6px;border-radius:4px}
 #lag{position:absolute;right:10px;top:8px;color:var(--wa);font-size:12px;display:none}
 .node{cursor:grab}.node .box{fill:#141c27;stroke:#2c394b;stroke-width:1.3}
 .node:hover .box{stroke:#44556d}.node.sel .box{stroke:var(--ac);stroke-width:2.2}
@@ -79,12 +83,12 @@ body.running .edge.flow .ln{animation-play-state:running}
 .node .one{cursor:pointer}.node .one rect{fill:#1f4f8f;stroke:#2f6fc4;stroke-width:1}.node .one:hover rect{fill:#2f6fc4}.node .one text{fill:#fff;font-size:10px}
 #bManual.on{background:#463610;border-color:#d29922}
 #tmp{fill:none;stroke:var(--ac);stroke-width:2;stroke-dasharray:5 4;pointer-events:none}
-#insp{background:var(--p);border-left:1px solid var(--bd);overflow-y:auto;padding:10px 12px 30px}
+#insp{background:var(--p);overflow-y:auto;padding:10px 12px 30px}
 #insp .hd{display:flex;gap:6px;align-items:center}#insp .hd input{flex:1;font-weight:600}
 .f{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:4px 0}
-.f>span{flex:1;color:#b9c4d2}.f input[type=number],.f select,.f input[type=text]{width:132px}
+.f>span{flex:1 1 0;color:#b9c4d2}.f input[type=number],.f select,.f input[type=text]{flex:0 1 46%;min-width:132px;max-width:300px}
 .f input[type=checkbox]{width:16px;height:16px;accent-color:var(--ac)}
-.rng{display:flex;align-items:center;gap:6px;width:132px}.rng input{flex:1;padding:0;accent-color:var(--wa)}.rng output{width:42px;text-align:right;font-variant-numeric:tabular-nums}
+.rng{display:flex;align-items:center;gap:6px;flex:0 1 46%;min-width:132px;max-width:300px}.rng input{flex:1;padding:0;accent-color:var(--wa)}.rng output{width:42px;text-align:right;font-variant-numeric:tabular-nums}
 .q{display:inline-block;margin-left:5px;width:14px;height:14px;line-height:13px;text-align:center;border-radius:50%;border:1px solid var(--bd);color:var(--mu);font-size:10px;font-style:normal;cursor:help}
 details.sec{border-top:1px solid var(--bd);margin-top:10px;padding-top:2px}
 details.sec>summary{cursor:pointer;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mu);font-weight:600;padding:7px 0}
@@ -102,10 +106,10 @@ details.sec.flt>summary{color:var(--wa)}
 .sc{border:1px solid var(--bd);border-radius:7px;padding:8px;margin:7px 0;background:var(--p2)}
 .sc b{display:block}.sc p{margin:3px 0 7px;color:#aab6c5;font-size:12px}
 #desc{width:100%;min-height:150px;resize:vertical;font-size:12.5px;line-height:1.5}
-#dock{height:280px;flex:none;background:var(--p);border-top:1px solid var(--bd);display:flex;flex-direction:column;min-height:0}
-#dock.min{height:34px}#dock.min #dockbody{display:none}
+#dock{height:var(--hd);flex:none;background:var(--p);border-top:1px solid var(--bd);display:flex;flex-direction:column;min-height:0}
+#dock.min #dockbody{display:none}
 #tabs{display:flex;gap:2px;padding:4px 8px 0;border-bottom:1px solid var(--bd);flex:none;align-items:center}
-#tabs button{border:0;background:none;border-radius:6px 6px 0 0;padding:6px 12px;color:var(--mu)}
+#tabs button{border:0;background:none;border-radius:6px 6px 0 0;padding:6px 12px;color:var(--mu)}#tabs button:hover{color:var(--tx)}
 #tabs button.on{background:var(--p2);color:var(--tx);box-shadow:inset 0 2px 0 var(--ac)}
 #tabs .sp{flex:1}
 #dockbody{flex:1;min-height:0;overflow:hidden;padding:8px 10px}
@@ -145,9 +149,30 @@ td.z{color:#55627a}td.b{color:var(--er);font-weight:600}td.w{color:var(--wa);fon
 .card:hover{border-color:var(--ac)}.card b{font-size:13.5px}.card span{color:#aab6c5;font-size:12px}
 .card em{font-style:normal;color:var(--wa);font-size:11px}
 .saved{display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid var(--bd)}.saved span{flex:1}
-#toast{position:fixed;left:50%;bottom:300px;transform:translateX(-50%);background:#1f2937;border:1px solid var(--bd);padding:7px 14px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:30;max-width:70vw}
+#toast{position:fixed;left:50%;bottom:calc(var(--hd) + 20px);transform:translateX(-50%);background:#1f2937;border:1px solid var(--bd);padding:7px 14px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:30;max-width:70vw}
 #toast.on{opacity:1}
 .help li{margin:4px 0}.help kbd{background:var(--p3);border:1px solid var(--bd);border-radius:4px;padding:0 5px;font-size:11px}
+.gut{background:var(--p);border:0 solid var(--bd);border-width:0 1px;cursor:col-resize;position:relative;z-index:4;touch-action:none;outline:none}
+.gut.h{height:6px;flex:none;cursor:row-resize;border-width:1px 0 0}
+.gut:hover,.gut.drag,.gut:focus-visible{background:var(--ac)}
+.gut button{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:14px;height:46px;padding:0;border-radius:7px;font-size:11px;line-height:1;background:var(--p3);color:var(--mu)}
+.gut button:hover{color:var(--tx)}
+body.resizing{user-select:none;cursor:col-resize}body.resizing.rowr{cursor:row-resize}body.resizing #svg{pointer-events:none}
+#zoomc{position:absolute;right:10px;bottom:8px;display:flex;gap:4px}#zoomc button{padding:2px 9px;background:#121821e6}
+#empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}#empty[hidden]{display:none}
+#empty>div{pointer-events:auto;background:var(--p);border:1px solid var(--bd);border-radius:12px;padding:18px 22px;max-width:430px;text-align:center}
+#empty h2{margin:0 0 6px;font-size:16px}#empty p{margin:0 0 12px;color:#aab6c5}
+.more{display:block;width:100%;margin:6px 0 2px;background:none;border:1px dashed var(--bd);color:var(--mu);font-size:12px;padding:3px 8px;text-align:left;white-space:normal}
+.more:hover{color:var(--tx)}
+.hp{margin:0 0 6px;padding:5px 8px;background:var(--p2);border-left:2px solid var(--ac);border-radius:0 5px 5px 0;font-size:12px;color:#b9c4d2;white-space:pre-line}
+.q{cursor:pointer}.q:hover,.q.on{color:var(--tx);border-color:var(--ac)}
+.guide{border:1px solid #2f6fc4;background:#132033;border-radius:9px;padding:9px 11px;margin:0 0 12px}
+.guide .t{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;margin-bottom:4px}.guide .t span{flex:1}
+.gstep{display:flex;gap:8px;padding:4px 0;align-items:flex-start;font-size:12.5px;color:#aab6c5}
+.gstep i{flex:none;width:18px;height:18px;border-radius:50%;border:1px solid var(--bd);text-align:center;font-style:normal;font-size:11px;line-height:17px;color:var(--mu)}
+.gstep.done{color:var(--mu)}.gstep.done i{background:#12381b;border-color:#215b2b;color:#56d364}
+.gstep.cur{color:var(--tx)}.gstep.cur i{border-color:var(--ac);color:var(--ac)}.gstep div{flex:1}.gstep b{display:block}.gstep button{margin-top:4px}
+@media(max-width:1700px){.brand small{display:none}}
 </style>
 </head>
 <body>
@@ -158,6 +183,7 @@ td.z{color:#55627a}td.b{color:var(--er);font-weight:600}td.w{color:var(--wa);fon
   <button id="bSave" title="Save this system (and its failure scenarios) in this browser">Save</button>
   <button id="bExp" title="Download as JSON">Export</button>
   <button id="bImp" title="Load a JSON file">Import</button>
+  <button id="bUndo" title="Undo the last deletion, or go back to the system you had open before (Ctrl+Z)" disabled>↶ Undo</button>
   <input id="sysName" title="System name" spellcheck="false">
   <span class="sep"></span>
   <button id="bRun" class="pri">▶ Run</button>
@@ -174,10 +200,14 @@ td.z{color:#55627a}td.b{color:var(--er);font-weight:600}td.w{color:var(--wa);fon
   <span class="sep"></span>
   <button id="bHeal" title="Clear every injected fault and watch the system recover">✚ Heal all</button>
   <span id="clock">t = 0.0 s</span>
-  <button id="bHelp">?</button>
+  <div class="seg" id="modeSeg" title="Guided: the settings most systems need, a step-by-step guide and a short component list. All options: every setting and component.">
+    <button data-m="guided">Guided</button><button data-m="all">All options</button>
+  </div>
+  <button id="bHelp" title="How Faultline works">?</button>
 </header>
 <main id="main">
   <aside id="palette"></aside>
+  <div class="gut" id="gL" tabindex="0" role="separator" aria-orientation="vertical" title="Drag to resize the component list · double-click to reset · arrow keys also work"><button tabindex="-1"></button></div>
   <section id="stage">
     <svg id="svg">
       <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
@@ -185,10 +215,14 @@ td.z{color:#55627a}td.b{color:var(--er);font-weight:600}td.w{color:var(--wa);fon
     </svg>
     <canvas id="fx"></canvas>
     <div id="lag">⚠ simulation is running slower than requested (very high event rate)</div>
+    <div id="empty" hidden><div><h2>Nothing here yet</h2><p>Start from a worked example, or build your own: click a component in the list on the left, then drag from its ● to connect it to the next one.</p><button class="pri" id="bEmptyLib">📚 Open the Library</button></div></div>
+    <div id="zoomc"><button id="zOut" title="Zoom out">−</button><button id="zIn" title="Zoom in">+</button><button id="zFit" title="Fit the whole system in view (F)">Fit</button></div>
     <div id="hint">Drag from a node's ● to connect · ▶1 on a source sends a single message · drag a group by its title bar · scroll to zoom · Del removes selection · Space runs/pauses</div>
   </section>
+  <div class="gut" id="gR" tabindex="0" role="separator" aria-orientation="vertical" title="Drag to resize the settings panel · double-click to reset · arrow keys also work"><button tabindex="-1"></button></div>
   <aside id="insp"></aside>
 </main>
+<div class="gut h" id="gD" tabindex="0" role="separator" aria-orientation="horizontal" title="Drag to resize the bottom panel · double-click to reset · arrow keys also work"></div>
 <footer id="dock"><nav id="tabs"></nav><div id="dockbody"></div></footer>
 <div id="modal" hidden></div>
 <div id="toast"></div>
@@ -1646,6 +1680,59 @@ function field(obj,f,onch){const k=f[0],label=f[1],type=f[2],o=f[3]||{},help=f[4
  else{inp=h('input',{type:'number',min:o.min,max:o.max,step:o.step||1});inp.value=v;inp.oninput=()=>{let x=parseFloat(inp.value);if(isNaN(x))return;if(o.min!=null&&x<o.min)x=o.min;if(o.max!=null&&x>o.max)x=o.max;obj[k]=x;onch&&onch(k)}}
  return h('label',{class:'f',title:help||''},h('span',null,label,help?h('i',{class:'q'},'?'):null),inp)}
 function sec(title,kids,open,cls){return h('details',{class:'sec '+(cls||''),open:!!open},h('summary',null,title),kids)}
+/* ---------- guided view: the settings most systems need; the rest sit behind "more settings" ---------- */
+let guided=LS.get('faultline.guided',null),inspKey='';
+const moreOpen=new Set(),gs=LS.get('faultline.guide',{});
+const BK={producer:'mode everyS release rateMin rateMax pattern op keys timeout retries',service:'concurrency procMs respond idempotent',store:'latency maxConc idempotent supportsTx',
+ external:'latency rateLimit idempotent',cache:'ttlMs capacity onWrite',log:'partitions retention',queue:'capacity fifo',pubsub:'retries timeout',proxy:'strategy rateLimit retryNext',
+ act:'op tx outbox onError timeout retries',sub:'ack maxAttempts onExhaust group',poll:'everyMs batch send',nf:'down errorRate latencyMult pause surge',ef:'partition drop respDrop dup',
+ sg:'stopped consume',ob:'outboxMode outboxPollMs outboxBatch',ib:'inbox inboxPollMs inboxBatch'};
+const COMMON={client:1,service:1,worker:1,lb:1,kafka:1,queue:1,sql:1,cache:1,ext:1,note:1};
+/* a list of fields. In the guided view, settings outside the basic set are folded away unless they have been changed from their default */
+function flds(obj,list,onch,name,def){const mk=f=>field(obj,f,onch);if(!guided||!BK[name])return list.map(mk);
+ const b=BK[name].split(' '),adv=list.filter(f=>!b.includes(f[0])&&!(def&&f[0] in def&&obj[f[0]]!==def[f[0]]));if(!adv.length)return list.map(mk);
+ const open=moreOpen.has(name);
+ return[(open?list:list.filter(f=>!adv.includes(f))).map(mk),h('button',{class:'more',title:'The guided view folds away settings that are still at their default. "All options" in the top bar shows everything, always.',onclick:()=>{if(open)moreOpen.delete(name);else moreOpen.add(name);renderInsp()}},open?'▴ Fewer settings':'▾ '+adv.length+' more setting'+(adv.length>1?'s':''))]}
+function gmark(k){if(gs[k])return;gs[k]=1;LS.set('faultline.guide',gs);if(guided&&M&&!sel&&!insp.contains(document.activeElement))renderInsp()}
+function guideCard(){const steps=[['lib','Pick a system','Load a worked example from the Library, or build your own from the components on the left.',['📚 Open the Library',()=>showLibrary()]],
+  ['run','Watch it run','Press ▶ Run. Blue dots are requests, green dots are replies, red dots are errors. The speed menu slows it down.'],
+  ['sel','Look inside a component','Click any box or connection: this panel shows what it does, its settings and its live numbers.'],
+  ['fault','Break something','Press ⚡ Apply on a failure scenario below. Or select a component and use its ⚡ Inject faults section.'],
+  ['audit','See the damage','The Consistency audit follows every request to the end and counts what was lost, duplicated or left half done.',['Open the Consistency audit',()=>$('#tab-audit').click()]],
+  ['heal','Recover','Press ✚ Heal all, then watch how long the backlog takes to drain and what never comes back.']];
+ const cur=steps.findIndex(x=>!gs[x[0]]),set=o=>{for(const k in gs)delete gs[k];Object.assign(gs,o);LS.set('faultline.guide',gs);renderInsp()};
+ if(gs.hide)return h('button',{class:'more',style:'margin:0 0 10px',onclick:()=>set({})},'▾ Show the getting-started guide');
+ return h('div',{class:'guide'},h('div',{class:'t'},h('span',null,cur<0?'You have done the full loop ✓':'Getting started — step '+(cur+1)+' of '+steps.length),
+   h('button',{class:'sm',title:'Start the guide again',onclick:()=>set({})},'Restart'),h('button',{class:'sm',title:'Hide the guide',onclick:()=>set(Object.assign({},gs,{hide:1}))},'Hide')),
+  steps.map((x,i)=>h('div',{class:'gstep'+(gs[x[0]]?' done':i===cur?' cur':'')},h('i',null,gs[x[0]]?'✓':i+1),h('div',null,h('b',null,x[1]),i===cur?x[2]:null,i===cur&&x[3]?h('div',null,h('button',{class:'sm pri',onclick:x[3][1]},x[3][0])):null))),
+  cur<0?h('div',{class:'muted',style:'font-size:12px;margin-top:4px'},'Next: load another example and compare its lanes, or switch to "All options" in the top bar for every setting.'):null)}
+function setMode(g,sv){guided=!!g;if(sv)LS.set('faultline.guided',guided);for(const b of $('#modeSeg').children)b.classList.toggle('on',(b.dataset.m==='guided')===guided);buildPalette();if(M)renderInsp()}
+/* the ? next to a setting opens its explanation in place (it is also the hover tooltip) */
+document.addEventListener('click',ev=>{const q=ev.target.closest&&ev.target.closest('.q');if(!q)return;ev.preventDefault();const l=q.closest('[title]');if(!l||!l.title)return;const nx=l.nextElementSibling;
+ if(nx&&nx.classList.contains('hp')){nx.remove();q.classList.remove('on')}else{l.after(h('p',{class:'hp'},l.title));q.classList.add('on')}});
+/* ---------- adjustable panels ---------- */
+const LDEF={wl:178,wr:340,hd:280,noL:false,noR:false,min:false},L=Object.assign({},LDEF,LS.get('faultline.layout',{}));
+function applyLayout(sv){const W=innerWidth,H=innerHeight;
+ L.wr=Math.round(Math.max(240,Math.min(L.wr,760,W-(L.noL?0:L.wl)-260)));L.wl=Math.round(Math.max(130,Math.min(L.wl,420,W-(L.noR?0:L.wr)-260)));L.hd=Math.round(Math.max(110,Math.min(L.hd,H-190)));
+ const st=document.documentElement.style;st.setProperty('--wl',(L.noL?0:L.wl)+'px');st.setProperty('--wr',(L.noR?0:L.wr)+'px');st.setProperty('--hd',(L.min?34:L.hd)+'px');
+ document.body.classList.toggle('noL',L.noL);document.body.classList.toggle('noR',L.noR);$('#dock').classList.toggle('min',L.min);
+ const bl=$('#gL button'),br=$('#gR button'),bd=$('#dkT');bl.textContent=L.noL?'›':'‹';bl.title=L.noL?'Show the component list':'Hide the component list';br.textContent=L.noR?'‹':'›';br.title=L.noR?'Show the settings panel':'Hide the settings panel';
+ if(bd){bd.textContent=L.min?'▴ Show':'▾ Hide';bd.title=L.min?'Show the bottom panel':'Hide the bottom panel'}
+ sig={};if(sv)LS.set('faultline.layout',L)}
+function gutter(id,key,off){const g=$(id),row=key==='hd';
+ const set=ev=>{const r=$('#main').getBoundingClientRect(),v=key==='wl'?ev.clientX-r.left:key==='wr'?r.right-ev.clientX:innerHeight-ev.clientY;L[off]=v<(row?64:90);if(!L[off])L[key]=v;applyLayout()};
+ g.addEventListener('pointerdown',ev=>{if(ev.target.tagName==='BUTTON'||ev.button)return;ev.preventDefault();g.setPointerCapture(ev.pointerId);g.classList.add('drag');document.body.classList.add('resizing');document.body.classList.toggle('rowr',row);
+  const up=()=>{g.classList.remove('drag');document.body.classList.remove('resizing','rowr');g.removeEventListener('pointermove',set);g.removeEventListener('pointerup',up);g.removeEventListener('pointercancel',up);applyLayout(true)};
+  g.addEventListener('pointermove',set);g.addEventListener('pointerup',up);g.addEventListener('pointercancel',up)});
+ g.addEventListener('dblclick',ev=>{if(ev.target.tagName==='BUTTON')return;L[key]=LDEF[key];L[off]=false;applyLayout(true)});
+ g.addEventListener('keydown',ev=>{const d=row?{ArrowUp:16,ArrowDown:-16}[ev.key]:{ArrowLeft:key==='wl'?-16:16,ArrowRight:key==='wl'?16:-16}[ev.key];
+  if(d){L[off]=false;L[key]+=d;applyLayout(true);ev.preventDefault()}else if(ev.key==='Enter'){L[off]=!L[off];applyLayout(true);ev.preventDefault()}});
+ const b=g.querySelector('button');if(b)b.onclick=()=>{L[off]=!L[off];applyLayout(true)}}
+/* ---------- undo: one snapshot of the whole system per destructive step ---------- */
+const undoSt=[];
+function snap(what){undoSt.push({what,m:JSON.stringify(M),vp:Object.assign({},vp)});if(undoSt.length>25)undoSt.shift();$('#bUndo').disabled=false}
+function undo(){const u=undoSt.pop();$('#bUndo').disabled=!undoSt.length;if(!u)return toast('Nothing to undo');const run=running;M=normalize(JSON.parse(u.m));sel=null;openActs=new Set();resetSim();$('#sysName').value=M.name;renderGraph();vp=u.vp;applyVp();renderInsp();buildDock();save();setRun(run);toast('Undone: '+u.what+' — simulation restarted')}
+function zoomBy(f){const W=svg.clientWidth,H=svg.clientHeight,k=Math.max(0.25,Math.min(2.2,vp.k*f));vp.x=W/2-(W/2-vp.x)*k/vp.k;vp.y=H/2-(H/2-vp.y)*k/vp.k;vp.k=k;applyVp()}
 
 /* ---------- graph rendering ---------- */
 function mkNode(n){const T=TYPES[n.type],k=T.kind,g=document.createElementNS(SVGNS,'g');g.dataset.id=n.id;
@@ -1702,7 +1789,7 @@ function drawGroup(g){const el=groupEls[g.id];if(!el)return;const c=curCluster(g
   e.r.setAttribute('class','gsec'+(off?' down':w<=0?' idle':'')+(sgFaulty(s)?' faulty':'')+(sel&&sel.t==='g'&&sel.sg===s.id?' on':''))}
  el.g.classList.toggle('down',allOff);el.g.classList.toggle('faulty',!allOff&&anyF)}
 function updGroups(){for(const g of M.groups)drawGroup(g)}
-function renderGraph(){nodesG.innerHTML='';edgesG.innerHTML='';groupsG.innerHTML='';nodeEls={};edgeEls={};groupEls={};GEO={};
+function renderGraph(){$('#empty').hidden=M.nodes.length>0||M.groups.length>0;nodesG.innerHTML='';edgesG.innerHTML='';groupsG.innerHTML='';nodeEls={};edgeEls={};groupEls={};GEO={};
  for(const g of M.groups){mkGroup(g);placeGroup(g)}
  for(const n of M.nodes){mkNode(n);placeNode(n)}for(const e of M.edges){mkEdge(e);placeEdge(e)}
  refreshStatic();applySel();updNodes();updEdges();updGroups()}
@@ -1719,7 +1806,7 @@ function refreshStatic(){for(const n of M.nodes){const el=nodeEls[n.id];if(!el)c
   if(e.cfg.types&&b&&KIND(b)==='service'&&(MSGK[ka]||e.cfg.poll))st+=(st?' ':'')+'only '+cut(e.cfg.types,20);
   el.stat=st;el.g.classList.toggle('async',!!MSGK[ka]||!!e.cfg.poll);el.g.classList.toggle('faulty',isFaulty(e.fault,EFDEF))}}
 function applySel(){for(const id in nodeEls)nodeEls[id].g.classList.toggle('sel',!!sel&&sel.t==='n'&&sel.id===id);for(const id in edgeEls)edgeEls[id].g.classList.toggle('sel',!!sel&&sel.t==='e'&&sel.id===id);for(const id in groupEls)groupEls[id].g.classList.toggle('sel',!!sel&&sel.t==='g'&&sel.id===id)}
-function select(s){sel=s;applySel();if(sim)updGroups();renderInsp()}
+function select(s){if(s)gmark('sel');sel=s;applySel();if(sim)updGroups();renderInsp()}
 function applyVp(){vpG.setAttribute('transform',`translate(${vp.x},${vp.y}) scale(${vp.k})`)}
 function fitView(){if(!M.nodes.length&&!M.groups.length){vp={x:30,y:20,k:1};return applyVp()}let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
  for(const n of M.nodes){x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x+(KIND(n)==='note'?n.name.length*7.5:NW));y1=Math.max(y1,n.y+(KIND(n)==='note'?20:nodeH(n)))}
@@ -1727,7 +1814,7 @@ function fitView(){if(!M.nodes.length&&!M.groups.length){vp={x:30,y:20,k:1};retu
  const W=svg.clientWidth||900,H=svg.clientHeight||500,k=Math.max(0.35,Math.min(1.15,(W-70)/(x1-x0),(H-70)/(y1-y0)));
  vp={k,x:(W-(x1-x0)*k)/2-x0*k,y:(H-(y1-y0)*k)/2-y0*k};applyVp()}
 function toWorld(ev){const r=svg.getBoundingClientRect();return{x:(ev.clientX-r.left-vp.x)/vp.k,y:(ev.clientY-r.top-vp.y)/vp.k}}
-function structural(){regroup(M);M.rev=(M.rev|0)+1;renderGraph();save();sig={}}
+function structural(){if(M.nodes.length)gmark('lib');regroup(M);M.rev=(M.rev|0)+1;renderGraph();save();sig={}}
 
 /* ---------- pointer interaction ---------- */
 svg.addEventListener('pointerdown',ev=>{if(ev.button!==0)return;const t=ev.target,ng=t.closest('.node'),eg=t.closest('.edge'),gg=t.closest('.grp'),w=toWorld(ev);
@@ -1766,24 +1853,29 @@ svg.addEventListener('wheel',ev=>{ev.preventDefault();const r=svg.getBoundingCli
 const stage=$('#stage');
 stage.addEventListener('dragover',ev=>ev.preventDefault());
 stage.addEventListener('drop',ev=>{ev.preventDefault();const type=ev.dataTransfer.getData('text/plain'),w=toWorld(ev);if(type==='group'){const g=addGroup(M,w.x-150,w.y-100);structural();return select({t:'g',id:g.id})}if(!TYPES[type])return;const n=addNode(M,type,w.x-NW/2,w.y-NH/2);structural();select({t:'n',id:n.id})});
-function delSel(){if(!sel)return;if(sel.t==='n'){const n=nodeById(sel.id);if(n){sim.forget(n);removeNode(M,n.id)}}else if(sel.t==='g'){removeGroup(M,sel.id);sim.syncFaults()}else removeEdge(M,sel.id);sel=null;structural();renderInsp()}
+function delSel(){if(!sel)return;snap('delete');if(sel.t==='n'){const n=nodeById(sel.id);if(n){sim.forget(n);removeNode(M,n.id)}}else if(sel.t==='g'){removeGroup(M,sel.id);sim.syncFaults()}else removeEdge(M,sel.id);sel=null;structural();renderInsp()}
 document.addEventListener('keydown',ev=>{const t=ev.target.tagName;if(t==='INPUT'||t==='TEXTAREA'||t==='SELECT')return;
- if(ev.key==='Delete'||ev.key==='Backspace'){if(sel){delSel();ev.preventDefault()}}
+ if((ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='z'){undo();ev.preventDefault();return}
+ if(ev.ctrlKey||ev.metaKey||ev.altKey)return;
+ if(ev.key==='Delete'||ev.key==='Backspace'){if(sel){delSel();toast('Deleted — Ctrl+Z brings it back');ev.preventDefault()}}
+ else if(ev.key==='f'||ev.key==='F')fitView()
  else if(ev.key===' '){setRun(!running);ev.preventDefault()}
  else if(ev.key==='Escape'){if(!$('#modal').hidden)closeModal();else select(null)}});
 
 /* ---------- palette ---------- */
-function buildPalette(){const p=$('#palette');p.innerHTML='';const groups={};for(const t in TYPES)(groups[TYPES[t].group]=groups[TYPES[t].group]||[]).push(t);
- for(const g in groups){p.append(h('h3',{style:'color:'+GC[g]},g));for(const t of groups[g]){const T=TYPES[t];
+function buildPalette(){const p=$('#palette'),short=guided&&!moreOpen.has('pal');let hid=0;p.innerHTML='';const groups={};for(const t in TYPES)(groups[TYPES[t].group]=groups[TYPES[t].group]||[]).push(t);
+ for(const g in groups){p.append(h('h3',{style:'color:'+GC[g]},g));for(const t of groups[g]){const T=TYPES[t];if(short&&!COMMON[t]){hid++;continue}
   p.append(h('div',{class:'pi',draggable:'true',title:T.desc+'\n(click to add, or drag onto the canvas)',ondragstart:ev=>ev.dataTransfer.setData('text/plain',t),
    onclick:()=>{const W=svg.clientWidth,H=svg.clientHeight,o=(addN++%6)*26;const n=addNode(M,t,(W/2-vp.x)/vp.k-NW/2+o,(H/2-vp.y)/vp.k-NH/2+o);structural();select({t:'n',id:n.id})}},h('i',null,T.icon),T.label))}}
  p.append(h('h3',{style:'color:#79b8ff'},'Deployment'),h('div',{class:'pi',draggable:'true',title:'A box that represents one application. It is deployed as clusters (shards), each with server groups (builds), each with instances in regions. Services placed inside run once per server group.\n(click to add, or drag onto the canvas)',
-  ondragstart:ev=>ev.dataTransfer.setData('text/plain','group'),onclick:()=>{const W=svg.clientWidth,H=svg.clientHeight,o=(addN++%6)*26;const g=addGroup(M,(W/2-vp.x)/vp.k-150+o,(H/2-vp.y)/vp.k-100+o);structural();select({t:'g',id:g.id})}},h('i',null,'🗂'),'Application (clusters, server groups)'))}
+  ondragstart:ev=>ev.dataTransfer.setData('text/plain','group'),onclick:()=>{const W=svg.clientWidth,H=svg.clientHeight,o=(addN++%6)*26;const g=addGroup(M,(W/2-vp.x)/vp.k-150+o,(H/2-vp.y)/vp.k-100+o);structural();select({t:'g',id:g.id})}},h('i',null,'🗂'),'Application (clusters, server groups)'));
+ if(guided)p.append(h('button',{class:'more',style:'margin-top:12px',onclick:()=>{if(short)moreOpen.add('pal');else moreOpen.delete('pal');buildPalette()}},short?'▾ '+hid+' more components':'▴ Fewer components'))}
 
 /* ---------- inspector ---------- */
-function renderInsp(){insp.innerHTML='';if(sel){if(sel.t==='n'){const n=nodeById(sel.id);if(n)return inspNode(n)}else if(sel.t==='g'){const g=groupById(sel.id);if(g)return inspGroup(g)}else{const e=edgeById(sel.id);if(e)return inspEdge(e)}sel=null}inspSystem()}
+function renderInsp(){const k=sel?sel.t+sel.id:'',st=insp.scrollTop;renderInsp0();insp.scrollTop=k===inspKey?st:0;inspKey=k}
+function renderInsp0(){insp.innerHTML='';if(sel&&guided)insp.append(h('button',{class:'more',style:'margin:0 0 9px',onclick:()=>select(null)},'← Overview: guide and failure scenarios'));if(sel){if(sel.t==='n'){const n=nodeById(sel.id);if(n)return inspNode(n)}else if(sel.t==='g'){const g=groupById(sel.id);if(g)return inspGroup(g)}else{const e=edgeById(sel.id);if(e)return inspEdge(e)}sel=null}inspSystem()}
 function onCfg(){refreshStatic();save();sig={}}
-function onFault(n){return()=>{sim.syncFaults();refreshStatic();save();markOnce('⚡ '+n)}}
+function onFault(n){return()=>{gmark('fault');sim.syncFaults();refreshStatic();save();markOnce('⚡ '+n)}}
 function trigger(id,what){const n=nodeById(id);if(!n)return;const xs=sim.reps(n);
  if(what==='crash')for(const x of xs)sim.crash(x);else if(what==='errOnce'){sim.rt(xs[0]).once++;sim.log('fault',n.name+': next request will fail')}else if(what==='rebalance')sim.rebalance(n);
  else if(what==='flush'){for(const x of xs){const r=sim.rt(x);if(r.map)r.map.clear()}sim.log('fault',n.name+': cache flushed')}else if(what==='burst'){sim.burst(n,50);sim.log('fault',n.name+': burst of 50 requests')}
@@ -1810,7 +1902,7 @@ function inspNode(n){const T=TYPES[n.type],k=T.kind;
  if(k==='note')return;
  const grp=n.group&&groupById(n.group);if(grp)insp.append(h('div',{class:'btns'},h('button',{class:'sm',onclick:()=>select({t:'g',id:grp.id})},'🗂 Runs inside '+grp.name+(allSgs(grp).length>1&&REPL[k]?' — one copy per server group ('+allSgs(grp).length+')':'')+' — open the application')));
  let cf=CF[k];if(n.type==='cron'){const sched=n.cfg.mode==='schedule';cf=[CF.sched[0]].concat(sched?CF.sched.slice(1):CF.producer.slice(0,5),CF.producer.slice(5))}
- insp.append(sec('Configuration',cf.map(f=>field(n.cfg,f,key=>{onCfg();if(key==='mode'){sim.view(n).last=null;renderInsp()}})),true));
+ insp.append(sec('Configuration',flds(n.cfg,cf,key=>{onCfg();if(key==='mode'){sim.view(n).last=null;renderInsp()}},k,Object.assign(clone(KDEF[k]),T.d||{})),true));
  if(k==='store')insp.append(sec('Tables — connection points',[tablesEditor(n)],true));
  if(k==='service'){const pin=M.edges.filter(e=>e.to===n.id&&e.cfg.poll);
   if(pin.length)insp.append(h('div',{class:'btns'},pin.map(e=>{const db=nodeById(e.from),T=tableOf(db,e.cfg.table);return h('button',{class:'sm',onclick:()=>select({t:'e',id:e.id})},'⟳ Polls '+db.name+(T?' · '+T.name:'')+' every '+e.cfg.poll.everyMs+' ms × '+e.cfg.poll.batch+' — edit')})));
@@ -1819,13 +1911,13 @@ function inspNode(n){const T=TYPES[n.type],k=T.kind;
   const sums=()=>{const c=n.cfg;obS.textContent=!hasOb?'No action publishes through the outbox yet. Open a "publish →" action above and tick "Via transactional outbox".':c.outboxMode==='cdc'?'Rows are picked up from the database log within a few ms of commit.':'Every '+c.outboxPollMs+' ms the relay reads up to '+c.outboxBatch+' rows and publishes them: at most '+f1(c.outboxBatch/c.outboxPollMs*1000)+' msg/s, and an event waits up to '+ms(c.outboxPollMs)+' before it is even looked at.';
    ibS.textContent=!c.inbox?'Off: each message is handled while the sender waits.':'Every '+c.inboxPollMs+' ms the poller takes up to '+c.inboxBatch+' stored rows: at most '+f1(c.inboxBatch/c.inboxPollMs*1000)+' msg/s. The sender is acknowledged as soon as the row is stored.'};sums();
   const och=key=>{onCfg();sums();if(key==='outboxMode'||key==='inbox')renderInsp()};
-  insp.append(sec('Outbox relay — polling and batching',[obS,OBF.filter(f=>n.cfg.outboxMode!=='cdc'||(f[0]!=='outboxPollMs'&&f[0]!=='outboxBatch')).map(f=>field(n.cfg,f,och))],hasOb),
-   sec('Inbox — store first, process in batches',[ibS,(n.cfg.inbox?IBF:IBF.slice(0,1)).map(f=>field(n.cfg,f,och))],n.cfg.inbox))}
+  insp.append(sec('Outbox relay — polling and batching',[obS,flds(n.cfg,OBF.filter(f=>n.cfg.outboxMode!=='cdc'||(f[0]!=='outboxPollMs'&&f[0]!=='outboxBatch')),och,'ob',KDEF.service)],hasOb),
+   sec('Inbox — store first, process in batches',[ibS,flds(n.cfg,n.cfg.inbox?IBF:IBF.slice(0,1),och,'ib',KDEF.service)],n.cfg.inbox))}
  const btn=(label,what,title)=>h('button',{class:'sm',title:title||'',onclick:()=>{trigger(n.id,what);if(!running)setRun(true)}},label);
  const bs=[];if(k==='service')bs.push(btn('💥 Crash now','crash','Loses queued and in-flight work, restarts after the restart time'),btn('Fail next request','errOnce','Trigger exactly one handler error'));
  if(k==='log')bs.push(btn('Trigger rebalance','rebalance','In-flight messages are redelivered'));if(k==='cache')bs.push(btn('Flush cache','flush'));if(k==='producer'){bs.push(h('button',{class:'sm pri',title:'Send exactly one message. While the clock is paused it runs in slow motion until this message has settled, then pauses again.',onclick:()=>sendOne(n)},'▶ Send one message'));if(n.cfg.mode==='schedule')bs.push(btn('Run the batch now','fire','Release the next batch in the pattern immediately'));bs.push(btn('Burst of 50','burst'))}
  bs.push(h('button',{class:'sm',onclick:()=>{n.fault=clone(FDEF[k]);sim.syncFaults();refreshStatic();save();renderInsp();markOnce('healed '+n.name)}},'Clear faults'));
- insp.append(sec('⚡ Inject faults',[FF[k].map(f=>field(n.fault,f,onFault(n.name))),h('div',{class:'btns'},bs)],true,'flt'));
+ insp.append(sec('⚡ Inject faults',[flds(n.fault,FF[k],onFault(n.name),'nf',FDEF[k]),h('div',{class:'btns'},bs)],true,'flt'));
  insp.append(sec('Live metrics',[h('div',{id:'live'}),h('canvas',{id:'spark',style:'width:100%;height:60px;margin-top:6px'})],true));
  if(k==='producer')insp.append(sec('Last single message',[h('div',{id:'one'})],true));liveInsp()}
 function tablesEditor(n){const box=h('div'),ts=n.cfg.tables||(n.cfg.tables=[]);
@@ -1833,7 +1925,7 @@ function tablesEditor(n){const box=h('div'),ts=n.cfg.tables||(n.cfg.tables=[]);
  for(const t of ts){const nm=h('input',{type:'text',spellcheck:'false',style:'flex:1;min-width:0'});nm.value=t.name;nm.oninput=()=>{t.name=nm.value.trim()||'table';refreshStatic();updNodes();save()};
   const kd=h('select',{style:'width:156px'},Object.keys(TKIND).map(v=>h('option',{value:v},TKIND[v])));kd.value=t.kind;
   kd.onchange=()=>{t.kind=kd.value;if(t.kind!=='queue')for(const e of M.edges.filter(e=>e.from===n.id&&e.cfg.table===t.id))removeEdge(M,e.id);structural();renderInsp()};
-  box.append(h('div',{style:'display:flex;gap:5px;align-items:center;margin:3px 0'},nm,kd,h('button',{class:'sm warn',title:'Remove this table',onclick:()=>{removeTable(M,n,t.id);structural();renderInsp()}},'✕')))}
+  box.append(h('div',{style:'display:flex;gap:5px;align-items:center;margin:3px 0'},nm,kd,h('button',{class:'sm warn',title:'Remove this table',onclick:()=>{snap('remove table');removeTable(M,n,t.id);structural();renderInsp()}},'✕')))}
  const add=(label,name,kind)=>h('button',{class:'sm',onclick:()=>{let nm=name,i=2;while(ts.some(t=>t.name===nm))nm=name+'-'+(i++);addTable(M,n,nm,kind);structural();renderInsp()}},label);
  box.append(h('div',{class:'btns'},add('+ inbox','inbox','queue'),add('+ outbox','outbox','queue'),add('+ de-dupe','dedupe','dedupe'),add('+ data table','data','data')));return box}
 function tableSel(e,db,done){const ts=(KIND(db)==='store'&&db.cfg.tables)||[];if(!ts.length)return null;
@@ -1856,7 +1948,7 @@ function inspGroup(g){const c=curCluster(g),mc=g.clusters.length>1,nm=h('input',
   h('label',{class:'f'},h('span',null,'Cluster name'),txt(c,'name','cluster')),
   h('p',{class:'muted',style:'font-size:12px;margin:2px 0 6px'},mc?'Requests are sharded by key: a key always lands on the same one of the '+g.clusters.length+' clusters. Each cluster has its own server groups and its own 100% of traffic.':'One cluster serves every key. Add clusters to shard by key.'),
   field(c.fault,['down','⚡ This cluster is down','bool',null,'Every server group in the cluster stops serving, so its share of the keys fails.'],()=>{gch();markOnce('⚡ '+g.name+' '+c.name)})];
- if(mc)ck.push(h('div',{class:'btns'},h('button',{class:'sm warn',onclick:()=>{g.clusters=g.clusters.filter(k=>k!==c);delete gTab[g.id];restruct()}},'Delete cluster '+c.name)));
+ if(mc)ck.push(h('div',{class:'btns'},h('button',{class:'sm warn',onclick:()=>{snap('delete cluster');g.clusters=g.clusters.filter(k=>k!==c);delete gTab[g.id];restruct()}},'Delete cluster '+c.name)));
  insp.append(sec('Clusters (shards)',ck,true));
  /* server groups of the selected cluster: one section each */
  const sk=[];
@@ -1872,13 +1964,13 @@ function inspGroup(g){const c=curCluster(g),mc=g.clusters.length>1,nm=h('input',
   const det=h('details',{class:'act',open},h('summary',null,h('span',{class:'tt'},s.name),h('span',{class:'chip','data-sgw':s.id},''),s.cfg.consume==='own'?h('span',{class:'chip w'},'A/B'):null),
    h('div',{class:'bd'},h('label',{class:'f'},h('span',null,'Name (build / version)'),txt(s,'name','main')),
     h('label',{class:'f',title:'Baseline share of this cluster\'s traffic. The server groups of a cluster always add up to 100%: moving one slider rebalances the others.'},h('span',null,'Traffic share',h('i',{class:'q'},'?')),h('div',{class:'rng'},wr,wo)),
-    SGF.map(f=>field(s.cfg,f,key=>{M.rev++;gch();if(key==='consume')renderInsp()})),
+    flds(s.cfg,SGF,key=>{M.rev++;gch();if(key==='consume')renderInsp()},'sg',SGDEF),
     sub('Regions (data centres): name · instances'),regs,
     h('div',{class:'btns'},h('button',{class:'sm',onclick:()=>{s.regions.push(mkRegion(M,'region-'+(s.regions.length+1),1));M.rev++;gch();renderInsp()}},'+ region')),
     sub('⚡ Faults on this server group'),SFF.map(f=>field(s.fault,f,()=>{gch();markOnce('⚡ '+sim.gl(s))})),
     h('div',{class:'btns'},b('💥 Kill one instance','kill','One host dies: its in-flight work is lost and capacity drops'),b('Restore instances','restore'),b('Rolling restart','rolling','Restart the instances one at a time'),
      h('button',{class:'sm',onclick:()=>{sim.cancelCutover();s.fault=clone(SFDEF);for(const r of s.regions)r.fault=clone(RFDEF);gch();renderInsp()}},'Clear faults'),
-     c.sgs.length>1?h('button',{class:'sm warn',onclick:()=>{c.sgs=c.sgs.filter(x=>x!==s);restruct()}},'Delete server group'):null)));
+     c.sgs.length>1?h('button',{class:'sm warn',onclick:()=>{snap('delete server group');c.sgs=c.sgs.filter(x=>x!==s);restruct()}},'Delete server group'):null)));
   det.addEventListener('toggle',()=>{if(det.open)openActs.add(s.id);else openActs.delete(s.id)});sk.push(det)});
  sk.push(h('div',{class:'btns'},h('button',{class:'sm',title:'Add another build next to the existing ones, at 0% traffic',onclick:()=>{const o=copySg(c.sgs[c.sgs.length-1]);o.name='v'+(c.sgs.length+1);o.weight=0;o.consume='shared';const s=mkSg(M,o);c.sgs.push(s);openActs.add(s.id);restruct()}},'+ server group')));
  insp.append(sec('Server groups of '+c.name+' — traffic always totals 100%',sk,true));
@@ -1925,9 +2017,9 @@ function actionsEditor(n){const box=h('div'),acts=n.cfg.actions;
   const det=h('details',{class:'act',open:openActs.has(a.id)},
    h('summary',null,h('span',{class:'ix'},i+1),h('span',{class:'tt'},(MSGK[dk]?'publish → ':dk==='store'||dk==='cache'?(a.op==='read'?'read ← ':'write → '):'call → ')+dst.name+(T?' · '+T.name:'')),chips,
     h('button',{class:'sm',title:'Move earlier',onclick:mv(-1)},'↑'),h('button',{class:'sm',title:'Move later',onclick:mv(1)},'↓')),
-   h('div',{class:'bd'},tableSel(e,dst,()=>{structural();renderInsp()}),fs.map(f=>field(a,f,key=>{refreshStatic();save();sig={};if(key!=='timeout'&&key!=='retries'&&key!=='backoff'&&key!=='failPct'&&key!=='types'&&key!=='as')renderInsp()})),
+   h('div',{class:'bd'},tableSel(e,dst,()=>{structural();renderInsp()}),flds(a,fs,key=>{refreshStatic();save();sig={};if(key!=='timeout'&&key!=='retries'&&key!=='backoff'&&key!=='failPct'&&key!=='types'&&key!=='as')renderInsp()},'act',ACTD),
     h('div',{class:'btns'},h('button',{class:'sm',onclick:()=>{for(const x of sim.reps(n))sim.rt(x).actOnce[a.id]=1;toast('The next run of this action will fail');if(!running)setRun(true)}},'Fail this action once'),
-     h('button',{class:'sm warn',onclick:()=>{removeEdge(M,a.edge);structural();renderInsp()}},'Remove'))));
+     h('button',{class:'sm warn',onclick:()=>{snap('remove action');removeEdge(M,a.edge);structural();renderInsp()}},'Remove'))));
   det.addEventListener('toggle',()=>{if(det.open)openActs.add(a.id);else openActs.delete(a.id)});box.append(det)});
  return box}
 function inspEdge(e){const a=nodeById(e.from),b=nodeById(e.to),ka=KIND(a);
@@ -1941,9 +2033,9 @@ function inspEdge(e){const a=nodeById(e.from),b=nodeById(e.to),ka=KIND(a);
    pv.pkey==='coarse'?field(e.cfg,['pkeyN','Distinct values of that key','num',P(1,100000,1),'e.g. 3 tenants: at most 3 partitions are ever used.'],onCfg):null],true))}
  if(KIND(b)==='service'&&(MSGK[ka]||e.cfg.poll))insp.append(sec('Filter by message type',[field(e.cfg,['types','Only these types','txt',{ph:'(all types)'},'Consumer-side filter, e.g. "OrderCreated, OrderCancelled". Other messages are still delivered and acknowledged, so they use the partition or queue slot for a moment and count towards lag, but '+b.name+' does no work for them.'],onCfg)],true));
  if(e.cfg.poll){const p=e.cfg.poll,sum=h('p',{class:'muted',style:'margin:2px 0 6px;font-size:12px'}),upd=()=>{sum.textContent='Every '+p.everyMs+' ms the loop reads up to '+p.batch+' rows: at most '+f1(p.batch/p.everyMs*1000)+' rows/s, and a new row waits up to '+ms(p.everyMs)+' before it is even looked at.'};upd();
-  insp.append(sec('Polling — interval and batch',[sum,POLLF.map(f=>field(p,f,()=>{onCfg();upd()}))],true))}
- if(e.cfg.sub)insp.append(sec('Subscription / consumer group',(ka==='queue'?SUBF:SUBF.slice(0,5).concat([GRPF])).map(f=>field(e.cfg.sub,f,()=>{onCfg();sim.syncFaults()})),true));
- insp.append(sec('⚡ Network faults',[EFF.map(f=>field(e.fault,f,onFault(a.name+'→'+b.name))),h('div',{class:'btns'},h('button',{class:'sm',onclick:()=>{e.fault=clone(EFDEF);refreshStatic();save();renderInsp()}},'Clear faults'))],true,'flt'));
+  insp.append(sec('Polling — interval and batch',[sum,flds(p,POLLF,()=>{onCfg();upd()},'poll',POLLD)],true))}
+ if(e.cfg.sub)insp.append(sec('Subscription / consumer group',flds(e.cfg.sub,ka==='queue'?SUBF:SUBF.slice(0,5).concat([GRPF]),()=>{onCfg();sim.syncFaults()},'sub',SUBD),true));
+ insp.append(sec('⚡ Network faults',[flds(e.fault,EFF,onFault(a.name+'→'+b.name),'ef',EFDEF),h('div',{class:'btns'},h('button',{class:'sm',onclick:()=>{e.fault=clone(EFDEF);refreshStatic();save();renderInsp()}},'Clear faults'))],true,'flt'));
  insp.append(sec('Live metrics',[h('div',{id:'live'})],true));liveInsp()}
 /* everything in the deployment hierarchy that can carry a fault: application, cluster, server group, region */
 function depFaults(){const o=[];for(const g of M.groups){o.push([g,GFDEF]);for(const c of g.clusters){o.push([c,CFDEF]);for(const s of c.sgs){o.push([s,SFDEF]);for(const r of s.regions)o.push([r,RFDEF])}}}return o}
@@ -1952,7 +2044,7 @@ function captureFaults(){const f={},cap=(o,d)=>{const x={};for(const k in d)if(o
  for(const n of M.nodes)cap(n,FDEF[KIND(n)]);for(const e of M.edges)cap(e,EFDEF);for(const [o,d] of depFaults())cap(o,d);return f}
 function healAll(quiet){healTok++;sim.cancelCutover();for(const n of M.nodes)n.fault=clone(FDEF[KIND(n)]);for(const e of M.edges)e.fault=clone(EFDEF);for(const [o,d] of depFaults())o.fault=clone(d);sim.syncFaults();updGroups();refreshStatic();save();
  if(!quiet){sim.mark('✚ healed');sim.log('ok','All faults cleared');if(sel)renderInsp()}}
-function applyScenario(s){healAll(true);let miss=0;
+function applyScenario(s){gmark('fault');healAll(true);let miss=0;
  for(const id in s.faults){const t=nodeById(id)||edgeById(id)||depById(id);if(t)Object.assign(t.fault,s.faults[id]);else miss++}
  sim.syncFaults();
  for(const tg of s.triggers||[]){if(tg.group)gtrigger(tg.group,tg.what,tg);else trigger(tg.node,tg.what)}
@@ -1960,7 +2052,7 @@ function applyScenario(s){healAll(true);let miss=0;
  if(s.heal>0){const tok=healTok,sm=sim;sim.at(s.heal*1000,()=>{if(tok===healTok&&sm===sim){healAll();toast('Scenario healed — watch the recovery')}})}
  if(!running)setRun(true);toast('Applied: '+s.name+(s.heal>0?' (heals after '+s.heal+' s)':'')+(miss?' — '+miss+' target(s) no longer exist':''));if(sel)renderInsp()}
 function inspSystem(){const d=h('textarea',{id:'desc',spellcheck:'false',placeholder:'Describe this system and what to try…'});d.value=M.desc||'';d.oninput=()=>{M.desc=d.value;save()};
- insp.append(h('h3',{style:'margin-top:2px'},'About this system'),d,h('h3',null,'Failure scenarios'));
+ insp.innerHTML='';if(guided)insp.append(guideCard());insp.append(h('h3',{style:'margin-top:2px'},'About this system'),d,h('h3',null,'Failure scenarios'));
  if(!M.scenarios.length)insp.append(h('p',{class:'muted'},'None saved yet. Inject faults on nodes or connections (select one), then save the combination here to replay it later.'));
  M.scenarios.forEach((s,i)=>{const nf=Object.keys(s.faults||{}).length,nt=(s.triggers||[]).length;
   insp.append(h('div',{class:'sc'},h('b',null,s.name),h('p',null,s.desc||''),
@@ -2057,8 +2149,8 @@ function chart(cv,title,series,hist,marks,N){N=N||240;const dpr=window.devicePix
 
 /* ---------- dock ---------- */
 const TABS=[['dash','Dashboard'],['audit','Consistency audit'],['trade','Trade-offs'],['log','Event log']];
-function buildTabs(){const t=$('#tabs');t.innerHTML='';for(const [id,label] of TABS)t.append(h('button',{class:id===dockTab?'on':'',id:'tab-'+id,onclick:()=>{$('#dock').classList.remove('min');dockTab=id;buildTabs();buildDock()}},label));
- t.append(h('span',{class:'sp'}),h('button',{title:'Collapse / expand',onclick:()=>$('#dock').classList.toggle('min')},'▾▴'))}
+function buildTabs(){const t=$('#tabs');t.innerHTML='';for(const [id,label] of TABS)t.append(h('button',{class:id===dockTab?'on':'',id:'tab-'+id,onclick:()=>{if(id==='audit')gmark('audit');L.min=false;dockTab=id;buildTabs();applyLayout(true);buildDock()}},label));
+ t.append(h('span',{class:'sp'}),h('button',{id:'dkT',onclick:()=>{L.min=!L.min;applyLayout(true);if(!L.min)buildDock()}},L.min?'▴ Show':'▾ Hide'))}
 let kp={};
 function buildDock(){dockBody.innerHTML='';sig={};
  if(dockTab==='dash'){kp={};const k=h('div',{class:'kpis'});for(const [id,label,title] of [['req','Requests completed'],['succ','Client success','Share of requests where the client received a successful response (all time, and last second)'],['tput','Throughput ok/s'],['errs','Client errors/s'],['p50','Latency p50'],['p99','Latency p99'],['infl','In flight / lagging','Requests whose effects are still in motion: queued, retrying, or sitting unconsumed in a topic'],['anom','Consistency anomalies','See the Consistency audit tab']]){const b=h('b',null,'–');kp[id]=b;k.append(h('div',{class:'kpi',title:title||''},h('small',null,label),b))}
@@ -2216,7 +2308,7 @@ function scorecard(fnd){const nn=M.nodes.filter(n=>KIND(n)!=='note'),cnt=l=>fnd.
 /* ---------- run loop ---------- */
 function setRun(v,keep){if(!keep&&follow){follow=null;sim.manual=manual}running=v;$('#bRun').textContent=v?'⏸ Pause':'▶ Run';document.body.classList.toggle('running',v)}
 function resetSim(){healTok++;follow=null;oneTr=null;sim=new Sim(M,{vis:onVis});sim.manual=manual;parts=[];visT={};selTrace=null;sig={}}
-function refresh(){$('#clock').textContent='t = '+(sim.t/1000).toFixed(follow?2:1)+' s'+(follow?' · following #'+follow.tr.id:'');$('#lag').style.display=sim.lagging?'block':'none';updNodes();updEdges();updGroups();updDock();liveInsp()}
+function refresh(){if(running&&sim.t>4000)gmark('run');$('#clock').textContent='t = '+(sim.t/1000).toFixed(follow?2:1)+' s'+(follow?' · following #'+follow.tr.id:'');$('#lag').style.display=sim.lagging?'block':'none';updNodes();updEdges();updGroups();updDock();liveInsp()}
 let lastF=performance.now(),acc=0;
 function frame(now){const dt=Math.min(100,now-lastF);lastF=now;if(running)sim.advance(dt*(follow?Math.min(speed,0.1):speed));
  if(follow&&(follow.tr.final||sim.t>follow.until)){const tr=follow.tr;setRun(false);refresh();toast(tr.final?'Request #'+tr.id+' settled after '+ms(tr.tEnd-tr.t0)+' — paused. Its hops are listed under "Last single message".':'Request #'+tr.id+' is still in motion after 60 s — paused.')}
@@ -2229,10 +2321,10 @@ function showModal(...kids){const m=$('#modal');m.innerHTML='';m.append(h('div',
 function showLibrary(){const saved=LS.get('faultline.systems',{}),names=Object.keys(saved).sort();
  showModal(h('h2',null,'Library',h('button',{onclick:closeModal},'Close')),
   h('p',{class:'muted',style:'margin:2px 0 0'},'Each starter puts two or three designs side by side under the same load. Load one, press a scenario under "Failure scenarios" on the right, and compare the rows in the Consistency audit.'),
-  h('div',{class:'cards'},EXAMPLES.map(x=>h('div',{class:'card',onclick:()=>{loadModel(x.build());closeModal()}},h('em',null,x.tag),h('b',null,x.name),h('span',null,x.blurb)))),
+  h('div',{class:'cards'},EXAMPLES.map(x=>h('div',{class:'card',onclick:()=>{if(M.nodes.length)snap('load example');gmark('lib');loadModel(x.build());closeModal()}},h('em',null,x.tag),h('b',null,x.name),h('span',null,x.blurb)))),
   h('h3',null,'Your saved systems (stored in this browser)'),
   names.length?names.map(n=>h('div',{class:'saved'},h('span',null,n,h('span',{class:'muted'},'  ·  '+saved[n].nodes.length+' components, '+(saved[n].scenarios||[]).length+' scenarios')),
-    h('button',{class:'sm',onclick:()=>{loadModel(clone(saved[n]));closeModal()}},'Open'),h('button',{class:'sm warn',onclick:()=>{delete saved[n];LS.set('faultline.systems',saved);showLibrary()}},'Delete'))):h('p',{class:'muted'},'Nothing saved yet. "Save" stores the current system together with its failure scenarios; "Export" downloads it as a file.'))}
+    h('button',{class:'sm',onclick:()=>{if(M.nodes.length)snap('open saved system');gmark('lib');loadModel(clone(saved[n]));closeModal()}},'Open'),h('button',{class:'sm warn',onclick:()=>{delete saved[n];LS.set('faultline.systems',saved);showLibrary()}},'Delete'))):h('p',{class:'muted'},'Nothing saved yet. "Save" stores the current system together with its failure scenarios; "Export" downloads it as a file.'))}
 function showHelp(){showModal(h('h2',null,'How Faultline works',h('button',{onclick:closeModal},'Close')),h('ul',{class:'help',html:`
 <li><b>Build.</b> Click or drag components from the left. Drag from a node's <b>●</b> to another node to connect them. Sources emit requests; a connection out of a <b>service</b> becomes one of its ordered <b>actions</b> (write a DB, publish an event, call an API). A connection out of a topic or queue is a <b>subscription</b>.</li>
 <li><b>Configure.</b> Select a node or connection. For a service you can reorder actions, put DB writes in a transaction, publish through an outbox, and choose per action what a failure does (abort, ignore, compensate, fallback), with timeouts, retries and a circuit breaker.</li>
@@ -2245,7 +2337,9 @@ function showHelp(){showModal(h('h2',null,'How Faultline works',h('button',{oncl
 <li><b>Tables and polling loops.</b> Select a database and add <b>tables</b> (inbox, outbox, de-dupe, data). Each table is a row under the node and its own connection point: drop a service's connection on a row to write to that table, and drag the <b>●</b> on a work table to a <b>Polling loop</b> that reads it in batches. The dashed line from the table carries the poll interval, batch size, ordering and how rows are marked done. A de-dupe table makes a repeated message a unique-key hit that the consumer skips.</li>
 <li><b>Applications.</b> Add an <b>Application</b> box and drop services into it. It is deployed as <b>clusters</b> (shards by key; the tabs on the box) → <b>server groups</b> (builds; the sections under the title, always 100% of a cluster's traffic between them) → <b>regions</b> (instances per data centre). Select the box to edit the hierarchy, lose a region or a cluster, kill an instance, ship a bad build, or run a <b>canary</b>, <b>blue/green</b>, <b>highlander</b> or <b>A/B</b> cut-over between two server groups. Mark a server group "A/B: own consumer group" to have two builds read the same topic.</li>
 <li><b>Recover.</b> <b>✚ Heal all</b> clears faults and returns server groups to their baseline traffic split. Watch how long the backlog takes to drain, and what was permanently lost.</li>
-<li><b>Keys.</b> <kbd>Space</kbd> run / pause · <kbd>Del</kbd> delete selection · <kbd>Esc</kbd> deselect · scroll to zoom · drag the background to pan.</li>`}),
+<li><b>Guided and All options.</b> The switch in the top bar. <b>Guided</b> shows the settings most systems need, a short component list and a getting-started checklist; anything you have changed stays visible, and "more settings" unfolds the rest. <b>All options</b> shows everything. The <b>?</b> next to a setting opens its explanation.</li>
+<li><b>Layout.</b> Drag the bars between the panels to resize them, double-click a bar to reset it, and use the arrow on a bar to hide or show a side panel. The sizes are remembered.</li>
+<li><b>Keys.</b> <kbd>Space</kbd> run / pause · <kbd>Del</kbd> delete selection · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo a deletion · <kbd>F</kbd> fit to view · <kbd>Esc</kbd> deselect · scroll to zoom · drag the background to pan.</li>`}),
  h('p',{class:'muted'},'This is a teaching model, not a capacity planner: latencies, pools and retention are simplified, and the consistency audit judges each request against the actions you configured.'))}
 $('#bRun').onclick=()=>setRun(!running);
 $('#bStep').onclick=()=>{setRun(false);sim.advance(50);refresh()};
@@ -2253,17 +2347,20 @@ $('#bReset').onclick=()=>{resetSim();refresh();buildDock();toast('Simulation res
 $('#speed').onchange=ev=>{speed=parseFloat(ev.target.value)};
 $('#bManual').onclick=()=>{manual=!manual;if(!follow)sim.manual=manual;$('#bManual').classList.toggle('on',manual);$('#bManual').textContent=manual?'✋ Sources held':'✋ Hold sources';toast(manual?'Sources are held. Press ▶ 1 on a source to send a single message.':'Sources released — automatic traffic resumes')};
 $('#viewSeg').onclick=ev=>{const b=ev.target.closest('button');if(!b)return;view=b.dataset.v;for(const x of $('#viewSeg').children)x.classList.toggle('on',x===b);parts=[];updEdges()};
-$('#bHeal').onclick=()=>{healAll();toast('All faults cleared')};
+$('#bHeal').onclick=()=>{gmark('heal');healAll();toast('All faults cleared')};
 $('#bLib').onclick=showLibrary;$('#bHelp').onclick=showHelp;
-$('#bNew').onclick=()=>{loadModel(newModel('Untitled system'),false);toast('Empty canvas — add components from the left')};
+$('#bNew').onclick=()=>{const had=M.nodes.length;if(had)snap('New');loadModel(newModel('Untitled system'),false);toast('Empty canvas — add components from the left'+(had?'. Ctrl+Z brings the previous system back':''))};
+$('#bUndo').onclick=undo;$('#zIn').onclick=()=>zoomBy(1.25);$('#zOut').onclick=()=>zoomBy(0.8);$('#zFit').onclick=fitView;$('#bEmptyLib').onclick=showLibrary;
+$('#modeSeg').onclick=ev=>{const b=ev.target.closest('button');if(b)setMode(b.dataset.m==='guided',true)};
 $('#sysName').oninput=ev=>{M.name=ev.target.value;save()};
 $('#bSave').onclick=()=>{const s=LS.get('faultline.systems',{});const nm=(M.name||'').trim()||'Untitled system';M.name=nm;s[nm]=clone(M);LS.set('faultline.systems',s);toast('Saved "'+nm+'" with '+M.scenarios.length+' scenario(s) and current faults')};
 $('#bExp').onclick=()=>{const a=h('a',{href:URL.createObjectURL(new Blob([JSON.stringify(M,null,1)],{type:'application/json'})),download:(M.name||'system').replace(/[^\w.-]+/g,'_')+'.json'});document.body.append(a);a.click();a.remove()};
 $('#bImp').onclick=()=>$('#file').click();
-$('#file').onchange=ev=>{const f=ev.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{const m=JSON.parse(rd.result);if(!m||!Array.isArray(m.nodes))throw 0;loadModel(m);toast('Imported '+(m.name||'system'))}catch(e){toast('That file is not a Faultline system')}};rd.readAsText(f);ev.target.value=''};
-window.addEventListener('resize',()=>{sig={}});
+$('#file').onchange=ev=>{const f=ev.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{try{const m=JSON.parse(rd.result);if(!m||!Array.isArray(m.nodes))throw 0;if(M.nodes.length)snap('import');gmark('lib');loadModel(m);toast('Imported '+(m.name||'system'))}catch(e){toast('That file is not a Faultline system')}};rd.readAsText(f);ev.target.value=''};
+window.addEventListener('resize',()=>applyLayout());
 
-buildPalette();buildTabs();
+if(guided==null)guided=!LS.get('faultline.current',null);
+gutter('#gL','wl','noL');gutter('#gR','wr','noR');gutter('#gD','hd','min');buildTabs();applyLayout();setMode(guided);
 {const cur=LS.get('faultline.current',null);if(cur&&Array.isArray(cur.nodes)&&cur.nodes.length){try{loadModel(cur)}catch(e){loadModel(EXAMPLES[0].build())}}else{loadModel(EXAMPLES[0].build());showLibrary()}}
 requestAnimationFrame(frame);
 </script>
