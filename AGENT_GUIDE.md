@@ -30,12 +30,12 @@ Work through these in order. Each step ends when its criterion holds.
 6. **Write the deployment** (application boxes) from deployment manifests: shards, builds running side by side, regions, instance counts. *Done when every deployable from step 1 is an application box.*
 7. **Write scenarios.** *Done when there is one per dependency that can fail (down), one per broker connection (duplicate delivery), one per deployment cut-over the codebase's pipeline performs, and one `replay` per error queue, dead-letter queue or parked-row table that the codebase has a replay tool or runbook for.*
 8. **Validate** with `node validate.js <file>` (it needs `index.html` beside it). Without Node, re-check [Rules that break a file](#rules-that-break-a-file) by hand. *Done when it reports no errors and the report explains every remaining warning.*
-9. **Read the audit** that `validate.js` prints for a healthy 30-second run: per source, how many requests ended ok, failed or **unfinished**, and how many were lost, duplicate, partial, ghost, corrupt, out of order, stale or parked. An anomaly with no faults applied is either a real weakness in the system or a mistake in the map. Unfinished requests are listed by the last thing that happened to them; they are not successes. Also read **Conditional paths** (how often each `types` / `if` / `times` action ran and was skipped: an action that never ran usually means the condition does not match what the sources send) and **Delayed, parked and held work**. *Done when each anomaly, unfinished request and never-run action is fixed in the map or explained in the report from the code.*
+9. **Read the audit** that `validate.js` prints for a healthy 30-second run: per source, how many requests ended ok, failed or **unfinished**, and how many were lost, duplicate, partial, ghost, corrupt, out of order, stale or parked. An anomaly with no faults applied is either a real weakness in the system or a mistake in the map. Unfinished requests are listed by the last thing that happened to them; they are not successes. Also read **Conditional paths** (how often each `if` / `times` action ran and was skipped: an action that never ran usually means the condition does not match what the sources send) and **Delayed, parked and held work**. *Done when each anomaly, unfinished request and never-run action is fixed in the map or explained in the report from the code.*
 10. **Write the report.** *Done when every node and edge has an evidence row and every item in [Known gaps](#known-gaps) has been checked against the code.*
 
 ## Mapping rules
 
-**One handler is one node.** A service-kind node has a single ordered action list that runs for every request it receives, whichever connection the request arrived on. A deployable with several entry points that do different work becomes several nodes, named `<deployable>: <entry point>` (`order-service: POST /orders`, `order-service: onPaymentSettled`), all placed inside the same application box. The exception is a single consumer that switches on the event type: keep it as one node and limit each action to its types.
+**One handler is one node.** A service-kind node has a single ordered action list that runs for every request it receives, whichever connection the request arrived on. A deployable with several entry points that do different work becomes several nodes, named `<deployable>: <entry point>` (`order-service: POST /orders`, `order-service: onPaymentSettled`), all placed inside the same application box. The exception is a single consumer that switches on the event type: keep it as one node and give each action an `if` on `$type`.
 
 **One caller behaviour is one source.** A client that calls two endpoints is two `client` nodes. Sources that act on the same entities share a `keyspace` (for example `"order"`), which is what lets the audit detect a reader seeing stale data from a writer.
 
@@ -100,13 +100,13 @@ Work through these in order. Each step ends when its criterion holds.
 |---|---|
 | SNS → SQS → consumer | `pubsub` → `queue` → `worker` |
 | Consumers sharing a Kafka group id | same `cfg.sub.group` on their edges from the topic |
-| Producer record key (`ProducerRecord(topic, key, …)`) | `cfg.pkey` on the edge into the topic: `entity`, `none` (null key) or `coarse` (tenant, region) |
+| Producer record key (`ProducerRecord(topic, key, …)`) | `cfg.pkey` on the edge into the topic: `entity`, `none` (null key) or `field:<name>` (tenant, customer, any other id carried by the message) |
 | Event/message classes or a `type` discriminator | `types` on the source that originates them |
-| Consumer ignores event types it does not handle | `cfg.types` on its edge from the topic, queue or table |
-| `switch` on event type inside one handler | `types` on each action |
+| Consumer ignores event types it does not handle | `cfg.if` on its edge from the topic, queue or table: `"$type=OrderCreated|OrderCancelled"` |
+| `switch` on event type inside one handler | `if` on each action: `"$type=OrderCreated"` |
 | Handler receives one event and publishes a different one | `as` on the publishing action |
 | Payload fields or headers the code branches or routes on | `fields` on the source that originates them, e.g. `"status=PAID:70|PENDING:30, items=1-4"` |
-| `if (msg.status == …)`, header check, feature of the message | `if` on the action; on the subscription edge (`cfg.if`) when the consumer discards the message |
+| `if (msg.status == …)`, header check, feature of the message | the same `if`, on the action, or on the subscription edge (`cfg.if`) when the consumer discards the message. Type and field tests combine: `"$type=OrderPaid & status=PAID"` |
 | Loop over line items: one write / publish / call per item | `times` on the action: a number, a range, or a numeric field name |
 | Handler changes a field or stamps an id on what it sends | `set` on the action, e.g. `"status=SHIPPED, sourceId=$id"` |
 | Producer key that is not the entity id | `cfg.pkey: "field:<name>"` on the edge into the topic |
@@ -130,7 +130,7 @@ Write a gap whenever something in the code has no component, setting, connection
 
 Report each of these you meet. The list is a starting point; anything else that does not fit is a gap too.
 
-- **Branching on something the message does not carry.** An action can be limited by message type and by message fields (`if`), or run only if the previous action failed, or only when the handler failed. Branching on a lookup result, a database value, a feature flag or the response of an earlier call is a gap. Conditions are joined with AND only.
+- **Branching on something the message does not carry.** An action can be limited by a condition on the message's type and fields (`if`), or run only if the previous action failed, or only when the handler failed. Branching on a lookup result, a database value, a feature flag or the response of an earlier call is a gap. Conditions are joined with AND only.
 - **Fan-out with different keys.** `times` repeats an action per item, but every item keeps the request's entity key. A loop whose items belong to different entities (and so different partitions or shards) is a gap, as is a batch consumer that handles many messages in one transaction.
 - **Message schemas.** Fields are flat name=value strings with no schema. Nested payloads, compatibility rules beyond "newest version understood", and response bodies are gaps.
 - **Keys.** Topic partitioning can use any field (`field:<name>`). Sharding, caching, FIFO grouping and the ordering audit always use the entity key; per-type keys and custom partitioners are gaps.
@@ -291,19 +291,17 @@ Tables (`cfg.tables`) are `{id, name, kind, also}`:
 | source | sends requests to the target | `pkey` when the target is a topic |
 | service-kind | a call made by an action | `table` when the target database has tables; `pkey` when the target is a topic |
 | proxy | a target it balances across | |
-| topic or queue | a subscription | `sub`, `types`, `if` |
-| pubsub | push delivery to a subscriber | `types`, `if` |
-| database `queue` or `data` table | a polling loop or CDC relay reading that table | `table`, `poll`, `types`, `if` |
+| topic or queue | a subscription | `sub`, `if` |
+| pubsub | push delivery to a subscriber | `if` |
+| database `queue` or `data` table | a polling loop or CDC relay reading that table | `table`, `poll`, `if` |
 | cache | read-through to its backing database | |
 
 | `cfg` field | Applies to | Values |
 |---|---|---|
 | `latency` | every edge | Network latency each way, default 2 |
 | `table` | edges to or from a database with tables | A table id on that database |
-| `pkey` | edges into a topic or stream | `entity` (default; one entity's messages share a partition and stay in order) \| `none` (round-robin; one entity's messages can overtake each other) \| `coarse` (keyed by a coarser grouping such as tenant) \| `field:<name>` (keyed by that message field) |
-| `if` | edges into a service-kind node from a topic, queue, pub/sub or table | Consumer-side condition on message fields. A message that does not match is acknowledged and causes no work |
-| `pkeyN` | with `pkey: "coarse"` | Number of distinct key values, default 3 |
-| `types` | edges from a topic, queue, pub/sub or table into a service-kind node | Consumer-side filter such as `"OrderCreated, OrderCancelled"`. Other messages are still delivered and acknowledged but run no actions. Empty = everything |
+| `pkey` | edges into a topic or stream | `entity` (default; one entity's messages share a partition and stay in order) \| `none` (round-robin; one entity's messages can overtake each other) \| `field:<name>` (keyed by that message field. Order per entity is kept only if the field is fixed for an entity, declared as `name=#N` in the source's `fields`) |
+| `if` | edges into a service-kind node from a topic, queue, pub/sub or table | Consumer-side condition on the message type and fields. A message that does not match is still delivered and acknowledged, but runs no actions. Empty = everything |
 | `sub` | edges from a topic or queue | See below |
 | `poll` | edges from a `queue` table | See below |
 
@@ -318,7 +316,7 @@ Tables (`cfg.tables`) are `{id, name, kind, also}`:
 | Field | Default | Meaning |
 |---|---|---|
 | `name` | `""` | What the step is in the code (`"UPDATE status"`) |
-| `if` | `""` | Run only when the message's fields satisfy this condition. Empty = always |
+| `if` | `""` | Run only when the message's type and fields satisfy this condition, e.g. `"$type=OrderCreated"`. Empty = always |
 | `times` | `""` | Run once per item: a number, a range `"0-4"`, or a numeric field name. Each run is audited separately; 0 = not at all |
 | `set` | `""` | Field values on the message or call this action sends: `"status=SHIPPED, sourceId=$id"` |
 | `delayMs` | `""` | Write to a work table or publish to a queue: not readable before this delay (number, range or field name) |
@@ -330,7 +328,6 @@ Tables (`cfg.tables`) are `{id, name, kind, also}`:
 | `outbox` | false | Publish through the service's built-in transactional outbox |
 | `onError` | `abort` | `abort` returns an error and leaves earlier non-transactional effects in place; `continue` ignores the failure; `compensate` undoes earlier actions |
 | `when` | `always` | `fallback` runs only if the previous action failed. `error` runs only after the handler has failed and rolled back (a catch block): if every `error` action succeeds, a message consumer acknowledges the message and the request is parked; if one fails, the original failure stands and the message is retried, unless that action has `onError: "continue"`, which swallows it and loses the message. A waiting caller always still gets the error |
-| `types` | `""` | Run this action only for these message types. Empty = always |
 | `as` | `""` | The message or call this action sends has this type (`Name` or `Name@version`) instead of the type being handled |
 | `await` | true | false = fire-and-forget |
 | `timeout` | 1000 | |
@@ -343,10 +340,9 @@ Tables (`cfg.tables`) are `{id, name, kind, also}`:
 
 A message carries an optional type name and a contract version (1 unless stated). They travel with it through services, topics, queues and tables until an action re-types it with `as`, or a server group's `emitVer` overrides the version of everything that build sends.
 
-One list syntax, `Name[@version][:weight]` separated by commas, serves three settings:
+One list syntax, `Name[@version][:weight]` separated by commas, serves two settings:
 
 - **Source `types`**, the mix it sends: `"OrderCreated:60, OrderUpdated:30, OrderCancelled@2:10"`.
-- **Filters** (edge `cfg.types`, action `types`): `"OrderCreated, OrderCancelled"`.
 - **Service `contract`**, the newest version it understands per type: `"OrderCreated@2, *@1"`. `*` covers every type not listed, including untyped messages. A type with no entry and no `*` is accepted at any version.
 
 A message newer than the consumer's contract is handled by the node's `badData` setting:
@@ -359,7 +355,7 @@ A message newer than the consumer's contract is handled by the node's `badData` 
 
 ### Message fields and conditions
 
-A source's `fields` gives every message it sends named values, for payload fields and headers alike: `"status=PAID:70|PENDING:30, items=0-4, region=eu|us"`. `name=a|b|c` picks one alternative (`:weight` sets its share); `name=1-500` picks a whole number in the range. Fields travel with the message through services, topics, queues and tables; an action's `set` changes them on what that action sends.
+A source's `fields` gives every message it sends named values, for payload fields and headers alike: `"status=PAID:70|PENDING:30, items=0-4, region=eu|us"`. `name=a|b|c` picks one alternative (`:weight` sets its share); `name=1-500` picks a whole number in the range; `name=#3` gives each entity one of 3 values that never changes for it (a tenant or customer id). Fields travel with the message through services, topics, queues and tables; an action's `set` changes them on what that action sends.
 
 A condition (`if` on an action, `cfg.if` on an edge into a consumer) is one or more tests joined with `&`:
 
@@ -410,7 +406,7 @@ Region names tie three things together: the `regions` of server groups, `region`
 
 ### Comparison groups (`lanes`)
 
-Optional, and only useful when one file holds several alternative designs side by side (as the built-in library does), each with its own sources. A group is `{id, name}` in top-level `lanes` (id prefix `l`); a node joins one with `"lane": "<id>"`. The dashboard then shows one row of charts per group and the audit a subtotal per group, counted from the sources in it. Leave `lanes` out and groups are made automatically: every connected set of components containing a source becomes one, named after the `note` just above it. A map of one real system is one connected design and gets no groups; do not add them.
+Optional, and only useful when one file holds several alternative designs side by side (as the built-in library does), each with its own sources. A group is `{id, name}` in top-level `lanes` (id prefix `l`); a node joins one with `"lane": "<id>"`. The dashboard, audit and trade-offs can then be read per group. A group that contains sources is counted from them. A group with no source of its own is a branch behind a shared source (three consumers of one topic, each a different design): put only the branch's own nodes in it and leave the shared source and topic out. It is then measured where work enters it, and each anomaly counts against the group of the component where it happened. Leave `lanes` out and groups are made automatically: every connected set of components containing a source becomes one, and a `note` placed just above it (within 130 of its top edge) is removed and becomes the group's name and frame caption: `"A · Dual write — save, then publish"` gives the name `A · Dual write`. A map of one real system is one connected design and gets no groups; do not add them.
 
 ### Scenarios
 
