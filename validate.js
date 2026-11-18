@@ -8,9 +8,15 @@ if(!file){console.error('usage: node validate.js <map.json> [index.html]');proce
 const html=fs.readFileSync(htmlPath,'utf8');
 const grab=id=>html.split('<script id="'+id+'">')[1].split('</script>')[0];
 const E=new Function(grab('engine').replace(/if\(typeof module[^\n]*/,'')+
- '\nreturn {Sim,KIND,TYPES,KDEF,FDEF,EFDEF,GFDEF,CFDEF,SFDEF,RFDEF,SUBD,POLLD,ACTD,GDEF,SGDEF,NODE_W,NODE_H,AFLAGS,canConnect,tableOf,normalize,tyParse};')();
+ '\nreturn {Sim,KIND,TYPES,KDEF,FDEF,EFDEF,GFDEF,CFDEF,SFDEF,RFDEF,SUBD,POLLD,ACTD,GDEF,SGDEF,NODE_W,NODE_H,AFLAGS,canConnect,tableOf,normalize,tyParse,predParse,fldParse};')();
 let raw;try{raw=JSON.parse(fs.readFileSync(file,'utf8'))}catch(e){console.error('ERROR  not valid JSON: '+e.message);process.exit(1)}
 const errs=[],warns=[],err=s=>errs.push(s),warn=s=>warns.push(s);
+/* provenance: "assumed" lists the settings its owner carries that were not found in code or config; "inferred" marks a component or connection that was not observed */
+const P={obs:0,ass:0,inf:[],rateAss:[]};
+const provOk=(o,what,keys)=>{if(o.assumed!==undefined){if(!Array.isArray(o.assumed))return err(what+': "assumed" must be a list of setting names');for(const k of o.assumed){if(!keys.includes(k))warn(what+': assumed "'+k+'" is not one of its settings');else P.ass++}}
+ if(o.inferred!==undefined&&typeof o.inferred!=='boolean')err(what+': "inferred" must be true or false');if(o.inferred)P.inf.push(what)};
+const predOk=(str,what)=>{for(const c of E.predParse(str))if(c.bad)warn(what+': "'+c.bad+'" is not a valid condition (use name=a|b, name!=a, name>10, name, !name, joined with &)')};
+const numOk=(str,what)=>{if(str!==''&&str!=null&&!/^\s*(\d+(\s*-\s*\d+)?|[\w.$-]+)\s*$/.test(String(str)))warn(what+': "'+str+'" must be a number, a range such as 0-4, or a field name')};
 const m=raw;
 if(!m||!Array.isArray(m.nodes)){console.error('ERROR  top level needs a "nodes" array');process.exit(1)}
 m.edges=m.edges||[];m.groups=m.groups||[];m.scenarios=m.scenarios||[];
@@ -27,7 +33,11 @@ for(const n of m.nodes){const what='node "'+(n.name||n.id)+'"';idOk(n.id,'n',wha
  for(const key in n.cfg||{})if(!(key in known))warn(what+': cfg.'+key+' is not a setting of a '+k+' and will be ignored');
  for(const key in n.fault||{})if(!(key in E.FDEF[k]))warn(what+': fault.'+key+' is not a fault of a '+k);
  if(n.cfg&&n.cfg.actions&&k!=='service')err(what+': only service-kind nodes have actions');
- if(n.cfg&&n.cfg.tables){if(k!=='store')err(what+': only databases have tables');else for(const t of n.cfg.tables){idOk(t.id,'t',what+' table "'+t.name+'"');if(!['queue','dedupe','data'].includes(t.kind))err(what+' table "'+t.name+'": kind must be queue, dedupe or data')}}}
+ if(n.cfg&&n.cfg.tables){if(k!=='store')err(what+': only databases have tables');else for(const t of n.cfg.tables){idOk(t.id,'t',what+' table "'+t.name+'"');if(!['queue','dedupe','data','proc'].includes(t.kind))err(what+' table "'+t.name+'": kind must be queue, dedupe, data or proc');for(const id of t.also||[])if(!n.cfg.tables.some(x=>x.id===id&&x!==t))err(what+' table "'+t.name+'": also "'+id+'" is not another table of this database');for(const key in t)if(!['id','name','kind','also'].includes(key))warn(what+' table "'+t.name+'": "'+key+'" is not a table setting')}}
+ provOk(n,what,Object.keys(known));P.obs+=Object.keys(n.cfg||{}).filter(x=>x!=='actions'&&x!=='tables'&&!(n.assumed||[]).includes(x)).length;
+ if(k==='producer'){const rk=(n.cfg&&n.cfg.mode==='schedule')||(n.type==='cron'&&!(n.cfg&&n.cfg.mode==='rate'))?['release','everyS']:['rateMin','rateMax'];if(rk.some(x=>!n.cfg||n.cfg[x]===undefined||(n.assumed||[]).includes(x)))P.rateAss.push(n.name)}
+ if(n.cfg&&n.cfg.fields&&!E.fldParse(n.cfg.fields).length)warn(what+': cfg.fields has no valid name=value entry');
+ if(n.cfg&&n.cfg.hold&&n.type!=='queue'&&n.type!=='fifo')warn(what+': cfg.hold only applies to a queue')}
 const nm=id=>nodes.has(id)?nodes.get(id).name:id;
 /* type lists: "Name", "Name@2", "Name:70", "Name@2:70", separated by commas */
 const tyOk=(str,what)=>{for(const tok of String(str||'').split(/[,;\n]+/))if(tok.trim()&&!/^\s*([^\s@:]+)\s*(?:@\s*(\d+))?\s*(?::\s*([\d.]+))?\s*$/.test(tok))warn(what+': "'+tok.trim()+'" is not a valid type entry (use Name, Name@version or Name:weight)')};
@@ -40,8 +50,10 @@ for(const e of m.edges){const what='edge '+e.id+' ('+nm(e.from)+' → '+nm(e.to)
  e.cfg=e.cfg||{};const ka=E.KIND(a),kb=E.KIND(b);
  if(e.cfg.table){const owner=ka==='store'?a:kb==='store'?b:null;if(!owner||!E.tableOf(owner,e.cfg.table)){err(what+': cfg.table "'+e.cfg.table+'" is not a table of '+(owner?owner.name:'a database on this edge'));continue}}
  const why=E.canConnect(tmp,a,b,e.cfg.table);if(why){err(what+': '+why);continue}
- for(const key in e.cfg)if(!['latency','table','sub','poll','types','pkey','pkeyN'].includes(key))warn(what+': cfg.'+key+' is not a connection setting and will be ignored');
- if(e.cfg.pkey!=null){if(!['entity','none','coarse'].includes(e.cfg.pkey))err(what+': cfg.pkey must be entity, none or coarse');if(kb!=='log')warn(what+': cfg.pkey only applies to connections into a topic or stream')}
+ provOk(e,what,['latency','table','sub','poll','types','if','pkey','pkeyN'].concat(Object.keys(E.SUBD),Object.keys(E.POLLD)));
+ if(e.cfg.if)predOk(e.cfg.if,what+' cfg.if');
+ for(const key in e.cfg)if(!['latency','table','sub','poll','types','if','pkey','pkeyN'].includes(key))warn(what+': cfg.'+key+' is not a connection setting and will be ignored');
+ if(e.cfg.pkey!=null){if(!['entity','none','coarse'].includes(e.cfg.pkey)&&!/^field:[\w.$-]+$/.test(e.cfg.pkey))err(what+': cfg.pkey must be entity, none, coarse or field:<name>');if(kb!=='log')warn(what+': cfg.pkey only applies to connections into a topic or stream')}
  if(e.cfg.types){tyOk(e.cfg.types,what+' cfg.types');if(!(kb==='service'&&(['log','queue','pubsub'].includes(ka)||ka==='store')))warn(what+': cfg.types (a consumer-side filter) only applies to connections from a topic, queue, pub/sub or table into a service')}
  if(e.cfg.sub&&!(ka==='log'||ka==='queue'))warn(what+': cfg.sub only applies to edges leaving a topic or queue');
  if(e.cfg.poll&&ka!=='store')warn(what+': cfg.poll only applies to edges leaving a database table');
@@ -54,14 +66,20 @@ for(const e of m.edges){const what='edge '+e.id+' ('+nm(e.from)+' → '+nm(e.to)
 for(const n of nodes.values()){if(E.KIND(n)!=='service')continue;const what='node "'+n.name+'"',used=new Set();
  for(const a of (n.cfg&&n.cfg.actions)||[]){idOk(a.id,'a',what+' action');const e=edges.get(a.edge);
   if(!e||e.from!==n.id){err(what+': action '+a.id+' points at edge "'+a.edge+'", which does not leave this node');continue}
-  if(used.has(a.edge))err(what+': two actions use edge '+a.edge);used.add(a.edge);
+  used.add(a.edge);provOk(a,what+' action '+a.id,Object.keys(E.ACTD));
   for(const key in a)if(key!=='id'&&key!=='edge'&&!(key in E.ACTD))warn(what+': action '+a.id+' field "'+key+'" is not an action setting');
   const d=nodes.get(e.to),dk=E.KIND(d);
   if(a.types)tyOk(a.types,what+' action '+a.id+' types');if(a.as)tyOk(a.as,what+' action '+a.id+' as');
+  if(a.if)predOk(a.if,what+' action '+a.id+' if');numOk(a.times,what+' action '+a.id+' times');numOk(a.delayMs,what+' action '+a.id+' delayMs');
+  if(a.when&&!['always','fallback','error'].includes(a.when))err(what+': action '+a.id+' when must be always, fallback or error');
+  if(a.check&&!(dk==='store'&&a.op==='read'))warn(what+': action '+a.id+' has check:true, which only applies to a read of a database');
+  if(a.txEnd&&!a.tx&&!a.outbox)warn(what+': action '+a.id+' has txEnd:true but is not part of a transaction (tx or outbox)');
+  if(a.delayMs&&!(dk==='queue'||(dk==='store'&&(E.tableOf(d,e.cfg.table)||{}).kind==='queue')))warn(what+': action '+a.id+' has delayMs, which only applies to a write to a work table or a publish to a queue');
   if(a.guard&&dk!=='store')warn(what+': action '+a.id+' has guard:true but '+d.name+' is not a database');
   if(a.tx&&dk!=='store')warn(what+': action '+a.id+' has tx:true but '+d.name+' is not a database');
   if(a.outbox&&!['log','queue','pubsub'].includes(dk))warn(what+': action '+a.id+' has outbox:true but '+d.name+' is not a topic or queue');
   if(a.outbox&&![...edges.values()].some(x=>x.from===n.id&&E.KIND(nodes.get(x.to))==='store'))err(what+': action '+a.id+' uses the outbox, but this node writes to no database')}
+ for(const e of edges.values())if(e.to===n.id&&e.cfg.poll&&e.cfg.poll.mark==='tx'&&!((n.cfg&&n.cfg.actions)||[]).some(a=>a.tx&&edges.get(a.edge)&&edges.get(a.edge).to===e.from))warn(what+': edge '+e.id+' marks rows in the handler\'s transaction (poll.mark "tx"), but no action of this node writes '+nm(e.from)+' with tx:true, so rows are marked one by one instead');
  for(const e of edges.values())if(e.from===n.id&&!used.has(e.id))err(what+': edge '+e.id+' → '+nm(e.to)+' has no action in cfg.actions, so it would never be called');
  if(n.type==='poller'&&![...edges.values()].some(e=>e.to===n.id&&E.KIND(nodes.get(e.from))==='store'))warn(what+': a polling loop with no table connected to it never runs')}
 
@@ -86,6 +104,13 @@ for(const g of m.groups){const what='app "'+(g.name||g.id)+'"';idOk(g.id,'g',wha
    for(const r of s.regions){idOk(r.id,'r',what+' region "'+r.name+'"');dep.set(r.id,E.RFDEF);if(!(r.instances>=1))err(what+' region "'+r.name+'": instances must be 1 or more')}}
   if(c.sgs.length>1&&sum!==100)err(what+' cluster "'+c.name+'": server-group weights add up to '+sum+', not 100')}}
 
+/* comparison groups */
+if(m.lanes!==undefined){if(!Array.isArray(m.lanes))err('"lanes" must be a list');else{for(const l of m.lanes)idOk(l.id,'l','comparison group "'+(l.name||l.id)+'"');for(const n of nodes.values())if(n.lane&&!m.lanes.some(l=>l.id===n.lane))err('node "'+n.name+'": lane "'+n.lane+'" is not the id of a comparison group in "lanes"');
+  for(const l of m.lanes)if(![...nodes.values()].some(n=>n.lane===l.id&&E.KIND(n)==='producer'))warn('comparison group "'+(l.name||l.id)+'": contains no source, so its dashboard stays empty')}}
+/* sites */
+{const rn=new Set();for(const g of m.groups)for(const c of g.clusters||[])for(const s of c.sgs||[])for(const r of s.regions||[])rn.add(r.name);
+ for(const n of nodes.values())if(n.cfg&&n.cfg.region&&rn.size&&!rn.has(n.cfg.region))warn('node "'+n.name+'": cfg.region "'+n.cfg.region+'" is not the name of a region of any application ('+[...rn].join(', ')+')');
+ for(const g of m.groups){const c=g.cfg||{};if(c.routing&&!['any','local','localFirst'].includes(c.routing))err('app "'+g.name+'": cfg.routing must be any, local or localFirst');if(c.autoscale&&(c.scaleMin||1)>(c.scaleMax||10))err('app "'+g.name+'": scaleMin is above scaleMax')}}
 /* scenarios */
 const sgIds=new Set([...dep].filter(x=>x[1]===E.SFDEF).map(x=>x[0]));
 for(const s of m.scenarios){const what='scenario "'+(s.name||s.id)+'"';idOk(s.id,'s',what);
@@ -96,7 +121,7 @@ for(const s of m.scenarios){const what='scenario "'+(s.name||s.id)+'"';idOk(s.id
   if(t.group){if(!sgIds.has(t.group))err(what+': trigger group "'+t.group+'" is not a server-group id');
    if(!['kill','rolling','cutover','restore'].includes(t.what))err(what+': server-group trigger "'+t.what+'" is unknown');
    if(t.what==='cutover'){if(!sgIds.has(t.from))err(what+': cut-over "from" must be a server-group id');if(!['canary','bluegreen','highlander','ab','rollback'].includes(t.mode))err(what+': cut-over mode "'+t.mode+'" is unknown')}}
-  else{if(!nodes.has(t.node))err(what+': trigger node "'+t.node+'" does not exist');if(!['crash','errOnce','rebalance','flush','burst','fire'].includes(t.what))err(what+': node trigger "'+t.what+'" is unknown')}}}
+  else{if(!nodes.has(t.node))err(what+': trigger node "'+t.node+'" does not exist');if(!['crash','errOnce','rebalance','flush','burst','fire','replay'].includes(t.what))err(what+': node trigger "'+t.what+'" is unknown')}}}
 
 /* load exactly as the app does, then run it */
 let ran=null;
@@ -112,14 +137,38 @@ if(!errs.length){try{const mm=E.normalize(JSON.parse(JSON.stringify(m)));
   sim.syncFaults();sim.advance(60000);
   ran={sim,mm};
  }catch(e){err('the simulator threw while running this system: '+(e&&e.stack||e))}}
-if(ran){const {sim,mm}=ran;console.log('\nHealthy run, 30 s of traffic then drained (no faults applied):');
+if(ran){const {sim,mm}=ran;
+ console.log('\nWhat this map rests on:');
+ console.log('  settings stated from code or config: '+P.obs+'   assumed: '+P.ass+'   everything else: simulator defaults');
+ console.log('  inferred, not observed: '+(P.inf.length?P.inf.join('; '):'none marked'));
+ if(P.rateAss.length)console.log('  ARRIVAL RATES ARE NOT MEASUREMENTS for: '+P.rateAss.join(', ')+'. Counts and rates below show how the design behaves under an illustrative load; do not report them as production figures.');
+ console.log('\nHealthy run, 30 s of traffic then 60 s to drain (no faults applied). "unfinished" requests are in neither the ok nor the failed column:');
  for(const src in sim.A.by){const b=sim.A.by[src],n=mm.nodes.find(x=>x.id===src),okp=Math.round(100*b.ok/Math.max(1,b.done));
   const flags=E.AFLAGS.filter(f=>b[f]).map(f=>f+' '+b[f]).join(', ');
-  console.log('  '+n.name.padEnd(28)+' sent '+String(b.created).padStart(6)+'  finished '+String(b.done).padStart(6)+'  ok '+String(okp).padStart(3)+'%'+(flags?'  anomalies: '+flags:''));
+  console.log('  '+n.name.padEnd(28)+' sent '+String(b.created).padStart(6)+'  ok '+String(b.ok).padStart(6)+'  failed '+String(b.fail).padStart(6)+'  UNFINISHED '+String(b.created-b.done).padStart(5)+'  ('+okp+'% of finished ok)'+(flags?'  anomalies: '+flags:''));
   if(!b.created)warn('source "'+n.name+'": sent nothing in 30 s');
   else if(b.done<b.created)warn('source "'+n.name+'": '+(b.created-b.done)+' request(s) never finished even with no faults (a blocked consumer, an undrained table, or a missing connection)');
   else if(okp<90)warn('source "'+n.name+'": only '+okp+'% succeed with no faults applied. Check capacity (concurrency ÷ latency), timeouts and rate limits against the offered rate');
   if(flags)warn('source "'+n.name+'": consistency anomalies with no faults applied ('+flags+'). This is either a real design weakness or a mapping mistake; say which in the report')}}
+if(ran&&(ran.mm.lanes||[]).length>1){const {sim,mm}=ran;console.log('\nPer comparison group'+(mm.lanesAuto?' (grouped automatically: one per connected design with its own source)':'')+':');
+ for(const l of mm.lanes){const o={created:0,done:0,ok:0,fail:0,anom:0};const fl={};for(const n of mm.nodes)if(n.lane===l.id&&E.KIND(n)==='producer'){const b=sim.A.by[n.id];if(b){for(const k in o)o[k]+=b[k];for(const f of E.AFLAGS)if(b[f])fl[f]=(fl[f]|0)+b[f]}}
+  console.log('  '+l.name.padEnd(44)+' sent '+String(o.created).padStart(6)+'  ok '+String(o.ok).padStart(6)+'  failed '+String(o.fail).padStart(6)+'  UNFINISHED '+String(o.created-o.done).padStart(5)+(Object.keys(fl).length?'  anomalies: '+Object.keys(fl).map(f=>f+' '+fl[f]).join(', '):''))}}
+if(ran){const {sim,mm}=ran,name=id=>{const x=sim.node(id)||mm.nodes.find(y=>y.id===String(id).split('@')[0]);return x?x.name:id};
+ if(sim.open.size){const by={};for(const tr of sim.open.values()){const ev=tr.ev[tr.ev.length-1],k=ev?ev[1]+' at '+name(ev[2]):'created, never sent';by[k]=(by[k]|0)+1}
+  console.log('\nUnfinished requests, by the last thing that happened to them:');for(const k of Object.keys(by).sort((a,b)=>by[b]-by[a]).slice(0,8))console.log('  '+String(by[k]).padStart(6)+'  '+k)}
+ /* conditional and repeated work: how often each predicate matched */
+ const cond=[];for(const n of mm.nodes){if(E.KIND(n)!=='service')continue;const rs=(sim.ix().cl.get(n.id)||[n]).map(x=>sim.rt(x));
+  for(const a of n.cfg.actions){if(!a.types&&!a.if&&!a.times&&a.when!=='error')continue;let run=0,skip=0;for(const r of rs){const st=r.ac&&r.ac[a.id];if(st){run+=st.run;skip+=st.skip}}
+   const e=mm.edges.find(x=>x.id===a.edge),lbl=(a.when==='error'?'on error ':'')+(a.types?'types '+a.types+' ':'')+(a.if?'if '+a.if+' ':'')+(a.times?'times '+a.times:'');
+   const T=E.tableOf(mm.nodes.find(x=>x.id===e.to),e.cfg.table);cond.push('  '+(n.name+' → '+name(e.to)+(T?' · '+T.name:'')+(a.name?' ('+a.name+')':'')).padEnd(72)+' ran for '+String(run).padStart(6)+'  skipped for '+String(skip).padStart(6)+'   ['+lbl.trim()+']');
+   if(a.when!=='error'&&!run&&run+skip>0)warn('node "'+n.name+'": action '+a.id+' ('+lbl.trim()+') never ran in 30 s of traffic. Check the condition against the fields and types the sources send')}
+  for(const e of mm.edges)if(e.to===n.id&&(e.cfg.types||e.cfg.if)){let f=0,i=0;for(const r of rs){f+=r.c.filt|0;i+=r.c.in}cond.push('  '+(name(e.from)+' ⇢ '+n.name).padEnd(44)+' filter passed '+String(i-f).padStart(6)+' of '+i+' deliveries   ['+((e.cfg.types||'')+' '+(e.cfg.if||'')).trim()+']')}}
+ if(cond.length){console.log('\nConditional paths (a message that does not match causes no call):');for(const c of cond)console.log(c)}
+ const rest=[];for(const n of mm.nodes){const r=sim.rts.get(n.id);if(!r)continue;
+  if(r.tb)for(const t of n.cfg.tables||[]){const tb=r.tb[t.id];if(!tb)continue;if(tb.dly)rest.push('  '+n.name+' · '+t.name+': '+tb.dly+' row(s) written with an availability time; read before eligible: '+tb.early+'; soonest read '+(tb.wMin==null?'never':Math.round(tb.wMin)+' ms after becoming eligible')+'; still waiting: '+tb.later.length);
+   if(tb.park)rest.push('  '+n.name+' · '+t.name+': '+tb.park+' row(s) parked (a "replay" trigger pushes them through again)')}
+  if(E.KIND(n)==='queue'&&r.ready.length&&(n.cfg.hold||!mm.edges.some(e=>e.from===n.id)))rest.push('  '+n.name+': '+r.ready.length+' message(s) resting here'+(n.cfg.hold?' until replayed by hand':' (nothing in this map reads it)'))}
+ if(rest.length){console.log('\nDelayed, parked and held work:');for(const x of rest)console.log(x)}}
 console.log('');
 for(const w of warns)console.log('WARN   '+w);
 for(const e of errs)console.log('ERROR  '+e);

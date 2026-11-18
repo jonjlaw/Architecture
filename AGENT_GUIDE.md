@@ -11,10 +11,12 @@ Your job: read one or more codebases and write that JSON file so it is a faithfu
 1. **`<system>.faultline.json`**: the map, in the [file format](#file-format) below.
 2. **`<system>.faultline-report.md`** with three sections:
    - **Evidence**: one row per node and per edge: its id, its name, and the `repo/path:line` that proves it exists and behaves as mapped.
-   - **Assumed values**: every number or setting you set without finding it in code or config, and why you chose it.
+   - **Assumed values**: every number or setting you set without finding it in code or config, and why you chose it. Mark each one in the JSON too (see [Provenance](#provenance)), so the simulator can say which of its numbers are illustrative.
    - **Gaps**: required even when empty. See [Gaps](#gaps).
 
-Map what the code does, and name things what the code names them (service, topic, table, queue and endpoint names). A setting belongs in the JSON when the code or config states it; otherwise leave it out so the default applies, or list it under Assumed values.
+Map what the code does, and name things what the code names them (service, topic, table, queue and endpoint names). A setting belongs in the JSON when the code or config states it; otherwise leave it out so the default applies, or set it, list it under Assumed values and name it in the owner's `assumed` list.
+
+**Arrival rates are almost never in a codebase.** Unless you were given measurements, a source's `rateMin`, `rateMax`, `release` and `everyS` are assumptions: put them in that source's `assumed` list. Never describe the simulator's throughput, latency or anomaly counts as production figures.
 
 ## Procedure
 
@@ -26,9 +28,9 @@ Work through these in order. Each step ends when its criterion holds.
 4. **Resolve shared infrastructure across repos.** The same topic, queue, database or table named in two codebases is one node. Match by the configured name, and record both sightings as evidence. A counterpart outside the codebases you were given (a caller or consumer you cannot find) becomes an `ext` node or a source, and a line in the report. *Done when every topic, queue, database and table name from step 3 maps to exactly one node.*
 5. **Write nodes, edges and actions** using the [mapping rules](#mapping-rules) and [file format](#file-format). *Done when every entry point from step 2 is a node and every side effect from step 3 is an action, or a gap.*
 6. **Write the deployment** (application boxes) from deployment manifests: shards, builds running side by side, regions, instance counts. *Done when every deployable from step 1 is an application box.*
-7. **Write scenarios.** *Done when there is one per dependency that can fail (down), one per broker connection (duplicate delivery), and one per deployment cut-over the codebase's pipeline performs.*
+7. **Write scenarios.** *Done when there is one per dependency that can fail (down), one per broker connection (duplicate delivery), one per deployment cut-over the codebase's pipeline performs, and one `replay` per error queue, dead-letter queue or parked-row table that the codebase has a replay tool or runbook for.*
 8. **Validate** with `node validate.js <file>` (it needs `index.html` beside it). Without Node, re-check [Rules that break a file](#rules-that-break-a-file) by hand. *Done when it reports no errors and the report explains every remaining warning.*
-9. **Read the audit** that `validate.js` prints for a healthy 30-second run: per source, how many requests ended lost, duplicate, partial, ghost, corrupt, out of order, stale or parked. An anomaly with no faults applied is either a real weakness in the system or a mistake in the map. *Done when each one is fixed in the map or explained in the report from the code.*
+9. **Read the audit** that `validate.js` prints for a healthy 30-second run: per source, how many requests ended ok, failed or **unfinished**, and how many were lost, duplicate, partial, ghost, corrupt, out of order, stale or parked. An anomaly with no faults applied is either a real weakness in the system or a mistake in the map. Unfinished requests are listed by the last thing that happened to them; they are not successes. Also read **Conditional paths** (how often each `types` / `if` / `times` action ran and was skipped: an action that never ran usually means the condition does not match what the sources send) and **Delayed, parked and held work**. *Done when each anomaly, unfinished request and never-run action is fixed in the map or explained in the report from the code.*
 10. **Write the report.** *Done when every node and edge has an evidence row and every item in [Known gaps](#known-gaps) has been checked against the code.*
 
 ## Mapping rules
@@ -37,7 +39,7 @@ Work through these in order. Each step ends when its criterion holds.
 
 **One caller behaviour is one source.** A client that calls two endpoints is two `client` nodes. Sources that act on the same entities share a `keyspace` (for example `"order"`), which is what lets the audit detect a reader seeing stale data from a writer.
 
-**A connection out of a service-kind node is a call that node makes**, and needs an action. Order the actions as the code executes them.
+**A connection out of a service-kind node is a target that node calls**, and needs at least one action. Several actions may use the same connection: two statements against one table, a read before a write, two calls to one API. Give each a `name`. Order the actions as the code executes them.
 
 ### Entry points
 
@@ -63,7 +65,19 @@ Work through these in order. Each step ends when its criterion holds.
 | Outbox table read by a separate process | `queue` table + `poller` + the poller's publish action |
 | Outbox handled by a library inside the service | publish action with `outbox: true` (the service must also write a database) |
 | Read-through cache | service → `cache` edge (action `op: "read"`), plus `cache` → database edge |
+| Several statements against one table | several actions on the same edge, each with a `name` |
+| `SELECT` "already processed?" then `INSERT` (no unique key) | a read action with `check: true`, then the write, both on the edge to that table |
+| Transaction committed before the handler's later steps | `txEnd: true` on the last action inside it; actions below run after the commit |
+| Stored procedure or trigger that writes several tables | a `proc` table with `also: [table ids]`; the service writes the `proc` table |
+| Row with `run_after` / `visible_at` / a scheduled time-out | write action with `delayMs` on a `queue` table |
+| Polling query without `FOR UPDATE SKIP LOCKED` or a status flip | `cfg.poll.claim: "none"` |
+| Row marked done in the same transaction as the handler's writes | `cfg.poll.mark: "tx"`, handler writes that database with `tx: true` |
+| Debezium / log-tailing relay reading a table | `poller` with `cfg.poll.mode: "cdc"`; allowed from `data` tables as well as `queue` tables |
+| Relay that publishes each outbox row to the topic named in the row | writer sets a field (`set: "topic=orders.created"`); the relay has one publish action per topic with `if: "topic=orders.created"` |
 | Read from a replica | `replica` node with `replicaLag` |
+| Database, broker or API that lives in one region | `region` on that node, using the application's region names |
+| Geo / latency routing in front of a service, region affinity | application `routing`: `local` or `localFirst`; `region` on the sources |
+| HPA, ASG or serverless concurrency scaling | application `autoscale` with `scaleMin`, `scaleMax`, `scaleTargetPct`, `scaleCooldownS` |
 
 ### Calls and failure handling
 
@@ -76,6 +90,9 @@ Work through these in order. Each step ends when its criterion holds.
 | Fire-and-forget (not awaited, no error handling) | action `await: false` |
 | Idempotency key honoured by the callee | callee `idempotent: true` |
 | Handler remembers processed ids in memory/cache | service `idempotent: true` |
+| `catch` block that writes an error queue / error table | action `when: "error"` to that queue or table, placed anywhere in the list |
+| Error queue drained only by an operator or a replay tool | `queue` node with `hold: true`; add an edge from it to the handler that a replay feeds, and a scenario with a `replay` trigger |
+| Call that can be rejected with 401 / 403 (certificate, secret, role) | nothing in the map; add a scenario with the edge fault `deny` |
 
 ### Messaging
 
@@ -88,6 +105,12 @@ Work through these in order. Each step ends when its criterion holds.
 | Consumer ignores event types it does not handle | `cfg.types` on its edge from the topic, queue or table |
 | `switch` on event type inside one handler | `types` on each action |
 | Handler receives one event and publishes a different one | `as` on the publishing action |
+| Payload fields or headers the code branches or routes on | `fields` on the source that originates them, e.g. `"status=PAID:70|PENDING:30, items=1-4"` |
+| `if (msg.status == …)`, header check, feature of the message | `if` on the action; on the subscription edge (`cfg.if`) when the consumer discards the message |
+| Loop over line items: one write / publish / call per item | `times` on the action: a number, a range, or a numeric field name |
+| Handler changes a field or stamps an id on what it sends | `set` on the action, e.g. `"status=SHIPPED, sourceId=$id"` |
+| Producer key that is not the entity id | `cfg.pkey: "field:<name>"` on the edge into the topic |
+| `DelaySeconds`, scheduled message, delay exchange | `delayMs` on the publish action into a `queue` |
 | Schema version, Avro/Protobuf version, `v2` DTO a consumer can parse | `contract` on the consuming node |
 | A build that changes a message format | `emitVer` on that server group |
 
@@ -107,20 +130,21 @@ Write a gap whenever something in the code has no component, setting, connection
 
 Report each of these you meet. The list is a starting point; anything else that does not fit is a gap too.
 
-- **Branching on anything but the message type.** An action can be limited to certain message types, or run only if the previous action failed. Branching on a field value, an amount, a feature flag or a lookup result is a gap.
-- **Fan-out per item.** One request carries one entity key. A request that loops over N line items and writes or publishes once per item is a gap.
-- **Message contents.** A message has a type name and a contract version only. Fields, schemas, compatibility rules beyond "newest version understood", and response bodies are gaps.
-- **Keys other than entity / none / coarser.** A key unrelated to the entity (a second id), per-type keys and custom partitioners are gaps. Sharding and caching always use the entity key.
-- **Delays and timers.** Delay queues, retries scheduled for a later time, TTL-triggered events and visibility delays. Only a subscription's retry backoff exists.
-- **Locks and coordination.** Distributed locks, leader election and leases. Only a version check on a single database write exists (`guard`).
+- **Branching on something the message does not carry.** An action can be limited by message type and by message fields (`if`), or run only if the previous action failed, or only when the handler failed. Branching on a lookup result, a database value, a feature flag or the response of an earlier call is a gap. Conditions are joined with AND only.
+- **Fan-out with different keys.** `times` repeats an action per item, but every item keeps the request's entity key. A loop whose items belong to different entities (and so different partitions or shards) is a gap, as is a batch consumer that handles many messages in one transaction.
+- **Message schemas.** Fields are flat name=value strings with no schema. Nested payloads, compatibility rules beyond "newest version understood", and response bodies are gaps.
+- **Keys.** Topic partitioning can use any field (`field:<name>`). Sharding, caching, FIFO grouping and the ordering audit always use the entity key; per-type keys and custom partitioners are gaps.
+- **Timers that are not a row or a message.** A write to a work table or a queue can carry a delay. TTL-triggered events, cancelling a scheduled row, in-memory timers and retry schedules other than a subscription's backoff are gaps.
+- **Locks and coordination.** Distributed locks, leader election and leases. A row claim on a polled table (`claim`) and a version check on a single database write (`guard`) exist; nothing else does.
+- **Transactions that span a broker.** A work-table row can be marked in the handler's database transaction (`mark: "tx"`). A broker acknowledgement inside a database or distributed transaction (DTC, Kafka transactions) is a gap: acknowledgement is always before or after the handler.
+- **Reads that decide.** A `check` read stops the handler when this message was already written. A read whose result selects between branches, or supplies a value, is a gap.
 - **Workflow engines and orchestrators** (Temporal, Step Functions, Camunda). Only a fixed action list with compensation exists.
 - **Stream processing.** Joins, windows, aggregations, compaction and stateful topic-to-topic topologies.
-- **Change data capture from arbitrary tables.** Only a service's built-in outbox can use CDC; any other table is read by polling.
-- **Database-to-database flows.** Replication topology, triggers, stored procedures and ETL between stores. Only a read replica's lag exists.
+- **Database-to-database flows.** Replication topology and ETL between stores. Procedures and triggers are limited to "writing this table also writes those" inside one database (`also`); procedure logic, and procedures that call other databases, are gaps. Only a read replica's lag exists.
 - **Long-lived connections.** WebSockets, server-sent events, gRPC streaming, long polling.
-- **Region-aware behaviour.** Regions only hold instance counts. Per-region routing, failover order, data residency and cross-region latency are gaps.
-- **Security and tenancy.** Authentication, authorisation, tenant isolation and secrets.
-- **Autoscaling and resource limits.** Instance counts are fixed, with no memory, CPU or disk model.
+- **Region-aware behaviour.** A request has an origin region, an application routes by it, and a component can be pinned to a region. Failover order between more than two regions, weighted or latency-based global routing, spill-over when the local region is merely saturated, data residency rules, and per-pair inter-region latency are gaps. Proxies, caches inside applications and services with an inbox ignore regions.
+- **Security and tenancy.** Only a refused call exists (edge fault `deny`). Token expiry and refresh, per-tenant authorisation, tenant isolation and secret rotation are gaps.
+- **Resource limits other than instances.** An application can autoscale its instance count on load. Scaling on queue depth or a custom metric, scaling a database or broker, connection pools that resize, and any memory, CPU or disk model are gaps.
 
 ## File format
 
@@ -183,13 +207,13 @@ Everything not listed as required may be omitted; the loader fills defaults. Unk
 
 ### Rules that break a file
 
-- **Ids** are a prefix letter plus an integer, and every id is unique: `n` node, `e` edge, `a` action, `t` table, `g` application, `c` cluster, `v` server group, `r` region, `s` scenario. Use one counter for the whole file.
-- **Every edge leaving a service-kind node needs exactly one action** in that node's `cfg.actions`, with `edge` set to the edge id. An edge without an action is never called. Nodes of other kinds have no actions.
+- **Ids** are a prefix letter plus an integer, and every id is unique: `n` node, `e` edge, `a` action, `t` table, `g` application, `c` cluster, `v` server group, `r` region, `s` scenario, `l` comparison group. Use one counter for the whole file.
+- **Every edge leaving a service-kind node needs at least one action** in that node's `cfg.actions`, with `edge` set to the edge id. An edge without an action is never called. Nodes of other kinds have no actions.
 - **A node whose `type` is not in the table below is dropped**, together with its edges.
 - **Connection rules:**
   - Nothing connects *to* a source.
   - Third-party nodes never initiate a connection.
-  - A database initiates a connection only from a `queue` table, and only to a service-kind node; the edge carries `cfg.table`.
+  - A database initiates a connection only from a `queue` or `data` table, and only to a service-kind node; the edge carries `cfg.table`. From a `data` table the edge is change-data-capture.
   - A cache connects only to one database (its backing store).
   - Two edges between the same pair of nodes are allowed only when their `cfg.table` differs.
 - **`cfg.table`** must be the id of a table on the database at that end of the edge. A database with no tables takes plain edges with no `cfg.table`.
@@ -220,8 +244,9 @@ Times are milliseconds unless the name ends in `S` (seconds). Rates are per seco
 **producer**
 
 - Traffic: `rateMin` 5, `rateMax` 10, `pattern` `steady`|`wave`|`bursty`|`ramp`, `period` 20 (s), `spacing` `poisson`|`even`.
-- Requests: `op` `write`|`read`, `keys` 20 (distinct entity ids), `keyspace` `""`, `types` `""` (see [Message types and contracts](#message-types-and-contracts)), `badPct` 0, `dupPct` 0 (client double-submits).
+- Requests: `op` `write`|`read`, `keys` 20 (distinct entity ids), `keyspace` `""`, `types` `""` (see [Message types and contracts](#message-types-and-contracts)), `fields` `""` (see [Message fields and conditions](#message-fields-and-conditions)), `badPct` 0, `dupPct` 0 (client double-submits).
 - Waiting: `timeout` 2000, `retries` 0, `backoff` 200.
+- `region` `""`: the region these requests come from (see [Regions and sites](#regions-and-sites)).
 - `cron` adds: `mode` `schedule`|`rate`, `everyS` 15, `release` `"200"` (messages per run: a number, a repeating list `"0,0,0,2000"`, or a range `"100-300"`), `spreadMs` 0, `perInstance` false (true = every app instance fires its own copy, as with no leader lock).
 
 A source sends each request to every node it is connected to.
@@ -238,9 +263,10 @@ Use explicit tables and a `poller` when the code has a separate relay or inbox p
 
 **store:** `latency` 5, `maxConc` 20 (connection pool), `queueCap` 200, `idempotent` false (upsert / unique key), `supportsTx` true, `replicaLag` 0, `tables` []. `nosql`, `blob` and `search` default to `supportsTx` false and `idempotent` true.
 
-Tables (`cfg.tables`) are `{id, name, kind}`:
+Tables (`cfg.tables`) are `{id, name, kind, also}`:
 
-- `data`: an ordinary table.
+- `data`: an ordinary table. A CDC relay may read it.
+- `proc`: a stored procedure (or a table with a trigger). `also` lists ids of other tables of the same database that a write to it also writes, in the same statement. Any table kind may carry `also`.
 - `queue`: a work table (inbox, outbox, job table). Rows written to it wait until a polling loop connected to it reads them.
 - `dedupe`: a unique-key table. A repeated message's insert is rejected and the handler skips the rest of its actions.
 
@@ -250,7 +276,7 @@ Tables (`cfg.tables`) are `{id, name, kind}`:
 
 **log:** `latency` 3, `partitions` 4, `retention` 5000 (messages per partition), `rateLimit` 0, `idempotent` false (idempotent producer).
 
-**queue:** `latency` 4, `capacity` 10000, `fifo` false, `rateLimit` 0, `idempotent` false.
+**queue:** `latency` 4, `capacity` 10000, `fifo` false, `rateLimit` 0, `idempotent` false, `hold` false (true = an error queue drained only by hand: messages rest until a `replay` trigger; requests resting there count as settled and parked). A queue with no outgoing edge also just keeps its messages.
 
 **pubsub:** `latency` 3, `retries` 1, `timeout` 2000.
 
@@ -265,16 +291,17 @@ Tables (`cfg.tables`) are `{id, name, kind}`:
 | source | sends requests to the target | `pkey` when the target is a topic |
 | service-kind | a call made by an action | `table` when the target database has tables; `pkey` when the target is a topic |
 | proxy | a target it balances across | |
-| topic or queue | a subscription | `sub`, `types` |
-| pubsub | push delivery to a subscriber | `types` |
-| database `queue` table | a polling loop reading that table | `table`, `poll`, `types` |
+| topic or queue | a subscription | `sub`, `types`, `if` |
+| pubsub | push delivery to a subscriber | `types`, `if` |
+| database `queue` or `data` table | a polling loop or CDC relay reading that table | `table`, `poll`, `types`, `if` |
 | cache | read-through to its backing database | |
 
 | `cfg` field | Applies to | Values |
 |---|---|---|
 | `latency` | every edge | Network latency each way, default 2 |
 | `table` | edges to or from a database with tables | A table id on that database |
-| `pkey` | edges into a topic or stream | `entity` (default; one entity's messages share a partition and stay in order) \| `none` (round-robin; one entity's messages can overtake each other) \| `coarse` (keyed by a coarser grouping such as tenant) |
+| `pkey` | edges into a topic or stream | `entity` (default; one entity's messages share a partition and stay in order) \| `none` (round-robin; one entity's messages can overtake each other) \| `coarse` (keyed by a coarser grouping such as tenant) \| `field:<name>` (keyed by that message field) |
+| `if` | edges into a service-kind node from a topic, queue, pub/sub or table | Consumer-side condition on message fields. A message that does not match is acknowledged and causes no work |
 | `pkeyN` | with `pkey: "coarse"` | Number of distinct key values, default 3 |
 | `types` | edges from a topic, queue, pub/sub or table into a service-kind node | Consumer-side filter such as `"OrderCreated, OrderCancelled"`. Other messages are still delivered and acknowledged but run no actions. Empty = everything |
 | `sub` | edges from a topic or queue | See below |
@@ -282,20 +309,27 @@ Tables (`cfg.tables`) are `{id, name, kind}`:
 
 **`cfg.sub`:** `ack` `after` (at-least-once) | `before` (at-most-once), `maxAttempts` 3, `backoff` 500, `onExhaust` `dlq`|`skip`|`block`, `timeout` 5000 (redelivered if not finished), `prefetch` 10, `group` `""`. On a topic, subscriptions with the same `group` form one consumer group and split the partitions; an empty `group` is a group of its own.
 
-**`cfg.poll`:** `everyMs` 200, `batch` 20, `send` `keyed` (parallel, one at a time per key) | `seq` (strict order) | `parallel` (unordered), `mark` `each`|`batch` (how rows are marked done), `maxAttempts` 5, `backoff` 1000 (wait after a failed batch), `onExhaust` `park`|`block`, `timeout` 5000 (row lease).
+**`cfg.poll`:** `mode` `poll` | `cdc` (tails the database log; always `cdc` from a `data` table), `lagMs` 5 (CDC delay after commit), `everyMs` 200, `batch` 20, `send` `keyed` (parallel, one at a time per key) | `seq` (strict order) | `parallel` (unordered), `mark` `each` | `batch` | `tx` (marked by the handler's own transaction on this database: never handled twice, but lost if that transaction commits before a later step fails), `claim` `skip` (a row being worked on is invisible to other readers) | `none` (a second loop, or a second instance of the loop's application, reads it again), `maxAttempts` 5, `backoff` 1000 (wait after a failed batch), `onExhaust` `park`|`block`, `timeout` 5000 (row lease).
 
 ### Actions
 
-`{id, edge, ...}` in a service-kind node's `cfg.actions`, in execution order.
+`{id, edge, ...}` in a service-kind node's `cfg.actions`, in execution order. Several actions may share an `edge`.
 
 | Field | Default | Meaning |
 |---|---|---|
+| `name` | `""` | What the step is in the code (`"UPDATE status"`) |
+| `if` | `""` | Run only when the message's fields satisfy this condition. Empty = always |
+| `times` | `""` | Run once per item: a number, a range `"0-4"`, or a numeric field name. Each run is audited separately; 0 = not at all |
+| `set` | `""` | Field values on the message or call this action sends: `"status=SHIPPED, sourceId=$id"` |
+| `delayMs` | `""` | Write to a work table or publish to a queue: not readable before this delay (number, range or field name) |
+| `check` | false | Database read only: stop the handler, as a duplicate, if it already wrote this table for this message. Concurrent copies both pass |
+| `txEnd` | false | The open transaction commits after this action instead of after the last one |
 | `op` | `write` | `read` has no side effects and is ignored by the audit |
 | `tx` | false | Database write committed only if the whole handler succeeds. All `tx` actions of a handler on one database commit together after the last action |
 | `guard` | false | Database write only: refused unless newer than the stored row (a version check). Late and repeated updates change nothing |
 | `outbox` | false | Publish through the service's built-in transactional outbox |
 | `onError` | `abort` | `abort` returns an error and leaves earlier non-transactional effects in place; `continue` ignores the failure; `compensate` undoes earlier actions |
-| `when` | `always` | `fallback` runs only if the previous action failed |
+| `when` | `always` | `fallback` runs only if the previous action failed. `error` runs only after the handler has failed and rolled back (a catch block): if every `error` action succeeds, a message consumer acknowledges the message and the request is parked; if one fails, the original failure stands and the message is retried, unless that action has `onError: "continue"`, which swallows it and loses the message. A waiting caller always still gets the error |
 | `types` | `""` | Run this action only for these message types. Empty = always |
 | `as` | `""` | The message or call this action sends has this type (`Name` or `Name@version`) instead of the type being handled |
 | `await` | true | false = fire-and-forget |
@@ -323,11 +357,39 @@ A message newer than the consumer's contract is handled by the node's `badData` 
 | `crash` | Retried: a poison message |
 | `ignore` | Processed and counted as corrupt |
 
+### Message fields and conditions
+
+A source's `fields` gives every message it sends named values, for payload fields and headers alike: `"status=PAID:70|PENDING:30, items=0-4, region=eu|us"`. `name=a|b|c` picks one alternative (`:weight` sets its share); `name=1-500` picks a whole number in the range. Fields travel with the message through services, topics, queues and tables; an action's `set` changes them on what that action sends.
+
+A condition (`if` on an action, `cfg.if` on an edge into a consumer) is one or more tests joined with `&`:
+
+| Test | True when |
+|---|---|
+| `status=PAID`, `status=PAID|SHIPPED` | the field equals one of the values |
+| `status!=CANCELLED` | the field is absent or has another value |
+| `amount>100`, `>=`, `<`, `<=` | numeric comparison |
+| `priority`, `!priority` | the field is present / absent |
+| `$type=OrderPaid` | the message type; `$key`, `$id` (request id), `$seq`, `$ver` are also available |
+
+In `set`, a value starting with `$` copies another field or one of those built-ins (`sourceId=$id`, `was=$status`); `name=` removes a field. An action in the `error` path receives the field `error` with the failure reason.
+
+### Provenance
+
+Every node, edge and action may carry:
+
+| Field | Meaning |
+|---|---|
+| `assumed` | List of its setting names whose values you did not find in code or config, e.g. `["rateMin", "rateMax"]` on a source, `["timeout"]` on an action. For an edge, names from `cfg`, `cfg.sub` and `cfg.poll` |
+| `inferred` | `true` when the component or connection itself was not observed (a caller you deduced, an `ext` node standing for an unseen consumer). Nodes and edges only |
+| `evidence` | `repo/path:line` for a node, shown in the editor |
+
+A setting you leave out is a simulator default and is reported as such. The editor and `validate.js` then state how many settings are observed, assumed and defaulted, list what is inferred, and label the results as illustrative when arrival rates are assumed.
+
 ### Applications (`groups`)
 
 A box on the canvas is one deployable. Its hierarchy:
 
-- **Application** `{id, name, x, y, w, h, cfg, clusters}`. `cfg`: `startMs` 3000, `detectMs` 2000 (time until dead instances stop receiving traffic), `sticky` false (pin each key to one server group), `canarySteps` `"5,25,50,100"`, `canaryStepS` 6, `canaryRollback` 10 (error % that rolls a canary back; 0 = never).
+- **Application** `{id, name, x, y, w, h, cfg, clusters}`. `cfg`: `startMs` 3000, `detectMs` 2000 (time until dead instances stop receiving traffic), `sticky` false (pin each key to one server group), `canarySteps` `"5,25,50,100"`, `canaryStepS` 6, `canaryRollback` 10 (error % that rolls a canary back; 0 = never), `routing` `any`|`local`|`localFirst`, `autoscale` false, `scaleMin` 1, `scaleMax` 10 (instances per server group), `scaleTargetPct` 70 (busy workers plus queued requests as a share of capacity), `scaleCooldownS` 10. Added instances serve after `startMs`.
 - **Cluster** `{id, name, sgs}`: a shard. Requests are assigned to a cluster by key.
 - **Server group** `{id, name, cfg, regions}`: one deployed build. `cfg`:
   - `weight`: share of its cluster's traffic.
@@ -337,6 +399,18 @@ A box on the canvas is one deployable. Its hierarchy:
 - **Region** `{id, name, instances}`.
 
 Each service-kind, proxy and cache node inside the box runs once per server group. A scheduler inside the box runs once for the application. A deployable with no sharding, one build and no manifest detail is one cluster, one server group, one region.
+
+### Regions and sites
+
+Region names tie three things together: the `regions` of server groups, `region` on a source (where its requests come from), and `region` on a database, cache, topic, queue, pub/sub or third party (where it lives). Top-level `xRegionMs` (default 40) is the latency added each way to a call that crosses regions. None of this has any effect until a map sets a `region`, a `routing` other than `any`, or an `isolate` fault.
+
+- A handler runs in one region of its server group and its calls carry that region onward. `routing: "any"` picks the region by instance count; `local` serves a request in the region it came from and fails it if that region has no live instances; `localFirst` fails over to another region, paying `xRegionMs` both ways. A request routed to a region waits for that region's instances even if another region is idle.
+- A call to a component pinned to a different region pays `xRegionMs` each way.
+- The region fault `isolate` cuts the **site of that name** off from everything outside it, in every application and for every component pinned to it. Calls across the boundary vanish (the caller times out); instances inside keep running and still reach what is inside. A component with no `region` counts as outside every site.
+
+### Comparison groups (`lanes`)
+
+Optional, and only useful when one file holds several alternative designs side by side (as the built-in library does), each with its own sources. A group is `{id, name}` in top-level `lanes` (id prefix `l`); a node joins one with `"lane": "<id>"`. The dashboard then shows one row of charts per group and the audit a subtotal per group, counted from the sources in it. Leave `lanes` out and groups are made automatically: every connected set of components containing a source becomes one, named after the `note` just above it. A map of one real system is one connected design and gets no groups; do not add them.
 
 ### Scenarios
 
@@ -349,15 +423,15 @@ Each service-kind, proxy and cache node inside the box runs once per server grou
 | cache | `down`, `errorRate`, `latencyMult` |
 | log, queue | `down`, `errorRate`, `latencyMult`, `pause` (consumers) |
 | pubsub, proxy | `down`, `errorRate` |
-| edge | `partition`, `drop`, `respDrop` (work done, reply lost), `reset`, `corrupt`, `dup` (all %), `extraLatency` |
+| edge | `partition`, `drop`, `respDrop` (work done, reply lost), `reset`, `deny` (credentials refused: fails fast, never retried), `corrupt`, `dup` (all %), `extraLatency` |
 | application | `down`, `partition` |
 | cluster | `down` |
 | server group | `down`, `instDown` (count), `errorRate`, `latencyMult` |
-| region | `down` |
+| region | `down`, `isolate` (the whole site of that name, see [Regions and sites](#regions-and-sites)) |
 
 `triggers` are one-off events:
 
-- On a node, `{node, what}`: `crash`, `errOnce` (next request fails), `rebalance` (topic), `flush` (cache), `burst` (50 requests from a source), `fire` (run a scheduler now).
+- On a node, `{node, what}`: `crash`, `errOnce` (next request fails), `rebalance` (topic), `flush` (cache), `burst` (50 requests from a source), `fire` (run a scheduler now), `replay` (manual recovery: a `hold` queue delivers what rests in it, a queue or topic re-delivers its dead letters, a database re-queues its parked rows). After a replay the audit shows whether it repeated work that had already been done.
 - On a server group, `{group, what}`: `kill` (one instance), `rolling` (rolling restart), `restore`.
 - A cut-over, `{group, what: "cutover", from, mode}`: moves traffic from server group `from` to `group`, with `mode` `canary`, `bluegreen`, `highlander`, `ab` or `rollback`.
 
