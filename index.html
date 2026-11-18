@@ -21,13 +21,13 @@ input,select,textarea{background:var(--bg);border:1px solid var(--bd);border-rad
 input:focus,select:focus,textarea:focus{outline:1px solid var(--ac);border-color:var(--ac)}
 h3{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mu);margin:14px 0 6px;font-weight:600}
 .muted{color:var(--mu)}
-#top{display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--p);border-bottom:1px solid var(--bd);flex:none;overflow-x:auto}
+#top{display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--p);border-bottom:1px solid var(--bd);flex:none;flex-wrap:wrap;position:relative;z-index:6}
 .brand{font-weight:700;font-size:15px;margin-right:6px;white-space:nowrap}.brand small{font-weight:400;color:var(--mu);font-size:11px;margin-left:6px}
-#top>*{flex:none}#sysName{flex:0 1 210px;width:210px;min-width:120px;font-weight:600}
+#top>*{flex:none}#sysName{flex:0 1 190px;width:190px;min-width:110px;font-weight:600}
 .sep{width:1px;height:22px;background:var(--bd);margin:0 4px;flex:none}
 .seg{display:flex}.seg button{border-radius:0}.seg button:first-child{border-radius:6px 0 0 6px}.seg button:last-child{border-radius:0 6px 6px 0;border-left:0}
 .seg button.on{background:#1f4f8f;border-color:#2f6fc4}
-#clock{font-variant-numeric:tabular-nums;color:var(--mu);min-width:90px;text-align:right;margin-left:auto;white-space:nowrap}
+#clock{font-variant-numeric:tabular-nums;color:#aab6c5;min-width:84px;white-space:nowrap}
 #main{flex:1;display:grid;grid-template-columns:var(--wl) 6px minmax(0,1fr) 6px var(--wr);grid-template-rows:minmax(0,1fr);min-height:0}
 #main>*{grid-row:1;min-height:0;min-width:0}#palette{grid-column:1}#gL{grid-column:2}#stage{grid-column:3}#gR{grid-column:4}#insp{grid-column:5}
 body.noL #palette,body.noR #insp{display:none}
@@ -37,16 +37,16 @@ body.noL #palette,body.noR #insp{display:none}
 #stage{position:relative;overflow:hidden;background:radial-gradient(circle at 1px 1px,#1a2330 1px,transparent 0) 0 0/22px 22px}
 #svg{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:default}
 #fx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-#hint{position:absolute;left:10px;bottom:8px;max-width:calc(100% - 150px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--mu);font-size:11.5px;pointer-events:none;background:#0b0f14cc;padding:2px 6px;border-radius:4px}
+#hint{position:absolute;left:10px;bottom:8px;max-width:calc(100% - 230px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--mu);font-size:11.5px;pointer-events:none;background:#0b0f14cc;padding:2px 6px;border-radius:4px}
 #lag{position:absolute;right:10px;top:8px;color:var(--wa);font-size:12px;display:none}
 .node{cursor:grab}.node .box{fill:#141c27;stroke:#2c394b;stroke-width:1.3}
 .node:hover .box{stroke:#44556d}.node.sel .box{stroke:var(--ac);stroke-width:2.2}
 .node.down .box{fill:#2a1416;stroke:var(--er)}.node.warnst .box{stroke:var(--wa)}
 .node text{fill:var(--tx);font-size:12px;pointer-events:none;user-select:none}
 .node .ico{font-size:17px}.node .nm{font-weight:600;font-size:12.5px}.node .ty{fill:var(--mu);font-size:10.5px}
-.node .s1,.node .s2{font-size:10.5px;fill:#a9b6c6;font-variant-numeric:tabular-nums}
+.node .s1,.node .s2{font-size:10.5px;fill:#9aa8ba;font-variant-numeric:tabular-nums}
 .node .gbg{fill:#1d2733}.node .gfill{fill:var(--ac)}
-.node .dot{fill:#3a4658}.node .dot.g{fill:var(--ok)}.node .dot.a{fill:var(--wa)}.node .dot.r{fill:var(--er)}
+.node .dot{fill:none;stroke:#6b7a90;stroke-width:1.5}.node .dot.g{fill:var(--ok);stroke:none}.node .dot.a{fill:var(--wa);stroke:none}.node .dot.r{fill:var(--er);stroke:none}
 .node .zap{fill:var(--wa);font-size:13px;display:none}.node.faulty .zap{display:block}
 .node .port{fill:#0b0f14;stroke:var(--ac);stroke-width:1.6;cursor:crosshair;opacity:.35}
 .node:hover .port{opacity:1}.node .port:hover{fill:var(--ac)}
@@ -113,7 +113,7 @@ details.sec.flt>summary{color:var(--wa)}
 #tabs button.on{background:var(--p2);color:var(--tx);box-shadow:inset 0 2px 0 var(--ac)}
 #tabs .sp{flex:1}
 #dockbody{flex:1;min-height:0;overflow:hidden;padding:8px 10px}
-.dash{display:grid;grid-template-columns:270px 1fr 1fr 1fr;gap:10px;height:100%}
+.dash{display:grid;grid-template-columns:minmax(300px,1.2fr) 1fr 1fr 1fr;gap:10px;height:100%}
 .kpis{display:grid;grid-template-columns:1fr 1fr;gap:6px;align-content:start}
 .kpi{background:var(--p2);border:1px solid var(--bd);border-radius:7px;padding:4px 8px;min-width:0;overflow:hidden}
 .kpi small{display:block;color:var(--mu);font-size:10.5px;white-space:nowrap}.kpi b{font-size:14.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -172,39 +172,103 @@ body.resizing{user-select:none;cursor:col-resize}body.resizing.rowr{cursor:row-r
 .gstep i{flex:none;width:18px;height:18px;border-radius:50%;border:1px solid var(--bd);text-align:center;font-style:normal;font-size:11px;line-height:17px;color:var(--mu)}
 .gstep.done{color:var(--mu)}.gstep.done i{background:#12381b;border-color:#215b2b;color:#56d364}
 .gstep.cur{color:var(--tx)}.gstep.cur i{border-color:var(--ac);color:var(--ac)}.gstep div{flex:1}.gstep b{display:block}.gstep button{margin-top:4px}
+/* ---- redesign: status strip, shape-coded status, semantic zoom, experiment report ---- */
+:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+.node:focus{outline:none}.node:focus-visible .box{stroke:#fff;stroke-width:2.2}
+#top>.sp{flex:1 1 0}
+.menu{position:relative}
+.menu>summary{list-style:none;cursor:pointer;background:var(--p2);border:1px solid var(--bd);border-radius:6px;padding:5px 10px;white-space:nowrap}
+.menu>summary::-webkit-details-marker{display:none}.menu>summary:hover,.menu[open]>summary{border-color:var(--ac)}
+.mlist{position:absolute;top:calc(100% + 4px);left:0;z-index:15;background:var(--p);border:1px solid var(--bd);border-radius:8px;padding:5px;display:flex;flex-direction:column;gap:2px;min-width:200px;box-shadow:0 8px 24px #0009}
+.mlist button{border:0;background:none;text-align:left;padding:6px 9px}.mlist button:hover{background:var(--p2)}
+.tgrp{display:flex;align-items:center;gap:6px;padding:3px 8px 3px 4px;border:1px solid var(--bd);border-radius:9px;background:#0e141c}
+#status{display:flex;align-items:center;gap:12px;padding:5px 10px;background:#0e141c;border-bottom:1px solid var(--bd);flex:none;min-height:44px;overflow:hidden}
+#status>*{flex:none}
+.verdict{display:flex;align-items:center;gap:7px;padding:4px 12px 4px 7px;border-radius:999px;border:1px solid var(--bd);background:var(--p2);max-width:46vw}
+.verdict i{font-style:normal;flex:none;width:19px;height:19px;line-height:19px;text-align:center;border-radius:50%;font-size:11px;font-weight:700;background:#2a3444;color:var(--tx)}
+.verdict b{font-size:13px}.verdict span{color:#aab6c5;font-size:12px;overflow:hidden;text-overflow:ellipsis}
+.verdict.ok{border-color:#215b2b}.verdict.ok i{background:var(--ok);color:#04140a}
+.verdict.warn{border-color:#6b4d12;background:#2a2110}.verdict.warn i{background:var(--wa);color:#1b1300}
+.verdict.bad{border-color:#7d2a2a;background:#2a1416}.verdict.bad i{background:var(--er);color:#fff}
+.verdict.info{border-color:#2f6fc4}.verdict.info i{background:var(--ac);color:#04121f}
+.sk{display:flex;flex-direction:column;line-height:1.2;padding:1px 4px;background:none;border:0;border-radius:5px;text-align:left}
+.sk small{color:var(--mu);font-size:10.5px;white-space:nowrap}.sk b{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.sk.bad b{color:#ff8f88}button.sk:hover{background:var(--p2)}
+#stF{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap;font-size:12px}
+.flab{color:var(--wa);font-weight:600}
+.fchip{display:inline-flex;border:1px solid #6b4d12;background:#2a2110;border-radius:6px;overflow:hidden;flex:0 1 auto;min-width:0}
+.fchip button{border:0;border-radius:0;background:none;padding:2px 7px;font-size:12px;color:#e9cf8f;overflow:hidden;text-overflow:ellipsis}.fchip button:hover{background:#463610}
+.fchip .fx2{border-left:1px solid #6b4d12;color:#aab6c5;flex:none}
+#bHeal.hot{background:#12381b;border-color:#2c7a3c}
+.node .s1 .er{fill:#ff8f88;font-weight:600}
+.node.ontr .box{stroke:var(--pu);stroke-width:2.6}.edge.ontr .ln{stroke:var(--pu);stroke-width:2.8}
+.edge.rel:not(.bad):not(.deg):not(.sel):not(.ontr) .ln{stroke:#7d95b5;stroke-width:2}
+.edge.deg .ln{stroke:var(--wa)}
+body.zfar .node .ty,body.zfar .node .s1,body.zfar .node .s2,body.zfar .node .trow text,body.zfar .node .one,body.zfar .edge .el,body.zfar .grp .gs2{display:none}
+body.zfar .node .nm{font-size:17px;transform:translate(0,24px)}
+body.zfar .node .ico{font-size:22px;transform:translate(-2px,18px)}
+body.zfar .node .dot{transform:translate(160px,16px) scale(1.8)}
+#xpc{overflow:auto;min-width:0;padding-right:4px}#xpc h3:first-child{margin-top:2px}
+.xp h4{margin:0 0 4px;font-size:13px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}.xp .chip{margin-left:0}
+.xp table{margin:6px 0}.xp th{cursor:default;position:static}.xp td{font-size:12px}
+.xp .dm{margin:6px 0 0;font-size:12px;line-height:1.9}
+.verd{margin:0 0 8px;font-size:12.5px}.verd .x{color:#ff8f88}
+td.pk{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}td.pk:hover{background:var(--p2)}
+.now{display:flex;align-items:center;gap:8px;margin:8px 0 2px;padding:6px 8px;background:var(--p2);border:1px solid var(--bd);border-radius:7px;font-size:12px;font-variant-numeric:tabular-nums}
+.badge{font-size:11px;font-weight:700;border-radius:9px;padding:1px 8px;white-space:nowrap}
+.badge.g{background:#12381b;color:#56d364}.badge.a{background:#463610;color:#e3b341}.badge.r{background:#4a1d1d;color:#ff8f88}.badge.i{background:#1f2937;color:#aab6c5}
+#legend{position:absolute;right:10px;bottom:42px;width:310px;max-height:calc(100% - 60px);overflow:auto;background:#121821f5;border:1px solid var(--bd);border-radius:9px;padding:10px 12px;font-size:12px;z-index:3}
+#legend[hidden]{display:none}
+#legend h4{margin:9px 0 3px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mu)}#legend h4:first-child{margin-top:0}
+#legend div{display:flex;gap:8px;align-items:baseline;margin:2px 0;color:#b9c4d2}#legend div>i{flex:none;width:38px;text-align:center;font-style:normal;font-weight:700}
+#zoomc button.on{border-color:var(--ac)}
+@media(prefers-reduced-motion:reduce){.edge.flow .ln{animation:none}#toast{transition:none}}
 @media(max-width:1700px){.brand small{display:none}}
 </style>
 </head>
 <body>
 <header id="top">
   <div class="brand">◢ Faultline<small>system design failure lab</small></div>
-  <button id="bLib" title="Example library and saved systems">📚 Library</button>
-  <button id="bNew" title="Start an empty system">New</button>
-  <button id="bSave" title="Save this system (and its failure scenarios) in this browser">Save</button>
-  <button id="bExp" title="Download as JSON">Export</button>
-  <button id="bImp" title="Load a JSON file">Import</button>
+  <input id="sysName" title="System name" aria-label="System name" spellcheck="false">
+  <button id="bLib" title="Example library and saved systems">Library</button>
+  <details class="menu" id="fileMenu"><summary title="New, save, export and import">File ▾</summary><div class="mlist">
+    <button id="bNew" title="Start an empty system">New empty system</button>
+    <button id="bSave" title="Save this system (and its failure scenarios) in this browser">Save in this browser</button>
+    <button id="bExp" title="Download as JSON">Export JSON…</button>
+    <button id="bImp" title="Load a JSON file">Import JSON…</button>
+  </div></details>
   <button id="bUndo" title="Undo the last deletion, or go back to the system you had open before (Ctrl+Z)" disabled>↶ Undo</button>
-  <input id="sysName" title="System name" spellcheck="false">
   <span class="sep"></span>
-  <button id="bRun" class="pri">▶ Run</button>
-  <button id="bStep" title="Advance 50 ms of simulated time">Step</button>
-  <button id="bReset" title="Restart the simulation and clear all statistics">↺ Reset</button>
+  <div class="tgrp" role="group" aria-label="Simulation clock">
+    <button id="bRun" class="pri" title="Run or pause the simulation (Space)">▶ Run</button>
+    <button id="bStep" title="Advance 50 ms of simulated time">Step</button>
+    <button id="bReset" title="Restart the simulation and clear all statistics">↺ Reset</button>
+    <select id="speed" title="Simulation speed" aria-label="Simulation speed">
+      <option value="0.05">0.05×</option><option value="0.1">0.1×</option><option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+      <option value="1" selected>1×</option><option value="2">2×</option><option value="5">5×</option><option value="10">10×</option>
+    </select>
+    <span id="clock">t = 0.0 s</span>
+  </div>
   <button id="bManual" title="Hold every source so nothing is sent automatically. Then send messages one at a time with the ▶1 button on a source. (▶1 also works while the clock is paused: the clock runs in slow motion until that one message has settled, then pauses again.)">✋ Hold sources</button>
-  <select id="speed" title="Simulation speed">
-    <option value="0.05">0.05×</option><option value="0.1">0.1×</option><option value="0.25">0.25×</option><option value="0.5">0.5×</option>
-    <option value="1" selected>1×</option><option value="2">2×</option><option value="5">5×</option><option value="10">10×</option>
-  </select>
+  <span class="sp"></span>
   <div class="seg" id="viewSeg" title="Messages: every request is a moving dot (best at low rates / slow motion). Flow: edges show aggregate rate and failure share (best at high rates).">
     <button data-v="messages" class="on">Messages</button><button data-v="flow">Flow</button>
   </div>
-  <span class="sep"></span>
-  <button id="bHeal" title="Clear every injected fault and watch the system recover">✚ Heal all</button>
-  <span id="clock">t = 0.0 s</span>
   <div class="seg" id="modeSeg" title="Guided: the settings most systems need, a step-by-step guide and a short component list. All options: every setting and component.">
     <button data-m="guided">Guided</button><button data-m="all">All options</button>
   </div>
-  <button id="bHelp" title="How Faultline works">?</button>
+  <button id="bHelp" title="How Faultline works" aria-label="Help">?</button>
 </header>
+<section id="status" aria-label="System status">
+  <button id="stV" class="verdict idle" title="Overall state, judged from what clients experienced over the last 3 seconds. Click to open the experiment report."><i>○</i><b>Not started</b><span></span></button>
+  <div class="sk" title="Share of requests where the client received a success, over the last 3 seconds"><small id="stSuccL">Client success</small><b id="stSucc">–</b></div>
+  <div class="sk" title="The slowest 1% of client requests took at least this long"><small>Latency p99</small><b id="stP99">–</b></div>
+  <div class="sk" title="Requests whose effects are still in motion: queued, retrying, or sitting unconsumed in a topic"><small>In flight</small><b id="stInfl">–</b></div>
+  <button class="sk" id="stAn" title="Requests that broke an invariant: lost, duplicated, half done, out of order … Click to open the Consistency audit"><small>Anomalies</small><b id="stAnom">–</b></button>
+  <span class="sep"></span>
+  <div id="stF"></div>
+  <button id="bHeal" title="Clear every injected fault and watch the system recover">✚ Heal all</button>
+</section>
 <main id="main">
   <aside id="palette"></aside>
   <div class="gut" id="gL" tabindex="0" role="separator" aria-orientation="vertical" title="Drag to resize the component list · double-click to reset · arrow keys also work"><button tabindex="-1"></button></div>
@@ -216,8 +280,9 @@ body.resizing{user-select:none;cursor:col-resize}body.resizing.rowr{cursor:row-r
     <canvas id="fx"></canvas>
     <div id="lag">⚠ simulation is running slower than requested (very high event rate)</div>
     <div id="empty" hidden><div><h2>Nothing here yet</h2><p>Start from a worked example, or build your own: click a component in the list on the left, then drag from its ● to connect it to the next one.</p><button class="pri" id="bEmptyLib">📚 Open the Library</button></div></div>
-    <div id="zoomc"><button id="zOut" title="Zoom out">−</button><button id="zIn" title="Zoom in">+</button><button id="zFit" title="Fit the whole system in view (F)">Fit</button></div>
-    <div id="hint">Drag from a node's ● to connect · ▶1 on a source sends a single message · drag a group by its title bar · scroll to zoom · Del removes selection · Space runs/pauses</div>
+    <div id="legend" hidden></div>
+    <div id="zoomc"><button id="bLegend" title="What the shapes, colours and lines mean">Legend</button><button id="zOut" title="Zoom out">−</button><button id="zIn" title="Zoom in">+</button><button id="zFit" title="Fit the whole system in view (F)">Fit</button></div>
+    <div id="hint">Click a component to inspect it · drag from its ● to connect · ▶1 on a source sends one message · scroll to zoom, zoom in for detail · Space runs/pauses</div>
   </section>
   <div class="gut" id="gR" tabindex="0" role="separator" aria-orientation="vertical" title="Drag to resize the settings panel · double-click to reset · arrow keys also work"><button tabindex="-1"></button></div>
   <aside id="insp"></aside>
@@ -225,7 +290,7 @@ body.resizing{user-select:none;cursor:col-resize}body.resizing.rowr{cursor:row-r
 <div class="gut h" id="gD" tabindex="0" role="separator" aria-orientation="horizontal" title="Drag to resize the bottom panel · double-click to reset · arrow keys also work"></div>
 <footer id="dock"><nav id="tabs"></nav><div id="dockbody"></div></footer>
 <div id="modal" hidden></div>
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 <input type="file" id="file" accept=".json,application/json" hidden>
 <script id="engine">
 'use strict';
@@ -1590,6 +1655,7 @@ const LS={get(k,d){try{const v=JSON.parse(localStorage.getItem(k));return v==nul
 let M,sim,running=false,speed=1,view='messages',sel=null,vp={x:30,y:20,k:1},drag=null;
 let nodeEls={},edgeEls={},groupEls={},GEO={},parts=[],visT={},dockTab='dash',selTrace=null,openActs=new Set(),healTok=0,saveT=0,addN=0,sig={};
 let manual=false,follow=null,oneTr=null,coFrom={};
+let zfar=false,XP=null,auF=null;
 const groupById=id=>(M.groups||[]).find(g=>g.id===id);
 const svg=$('#svg'),vpG=$('#vp'),nodesG=$('#nodes'),edgesG=$('#edges'),groupsG=$('#groups'),tmp=$('#tmp'),fx=$('#fx'),insp=$('#insp'),dockBody=$('#dockbody');
 
@@ -1679,7 +1745,8 @@ function field(obj,f,onch){const k=f[0],label=f[1],type=f[2],o=f[3]||{},help=f[4
  else if(type==='rng'){const r=h('input',{type:'range',min:o.min,max:o.max,step:o.step}),out=h('output',null,v+(o.unit||''));r.value=v;r.oninput=()=>{obj[k]=parseFloat(r.value);out.textContent=obj[k]+(o.unit||'');onch&&onch(k)};inp=h('div',{class:'rng'},r,out)}
  else{inp=h('input',{type:'number',min:o.min,max:o.max,step:o.step||1});inp.value=v;inp.oninput=()=>{let x=parseFloat(inp.value);if(isNaN(x))return;if(o.min!=null&&x<o.min)x=o.min;if(o.max!=null&&x>o.max)x=o.max;obj[k]=x;onch&&onch(k)}}
  return h('label',{class:'f',title:help||''},h('span',null,label,help?h('i',{class:'q'},'?'):null),inp)}
-function sec(title,kids,open,cls){return h('details',{class:'sec '+(cls||''),open:!!open},h('summary',null,title),kids)}
+const secOpen={};
+function sec(title,kids,open,cls){const key=title.split(' —')[0].replace(/ of .*| in .*/,''),s=h('summary',null,title),d=h('details',{class:'sec '+(cls||''),open:key in secOpen?secOpen[key]:!!open},s,kids);s.addEventListener('click',()=>setTimeout(()=>{secOpen[key]=d.open}));return d}
 /* ---------- guided view: the settings most systems need; the rest sit behind "more settings" ---------- */
 let guided=LS.get('faultline.guided',null),inspKey='';
 const moreOpen=new Set(),gs=LS.get('faultline.guide',{});
@@ -1737,21 +1804,21 @@ function zoomBy(f){const W=svg.clientWidth,H=svg.clientHeight,k=Math.max(0.25,Ma
 /* ---------- graph rendering ---------- */
 function mkNode(n){const T=TYPES[n.type],k=T.kind,g=document.createElementNS(SVGNS,'g');g.dataset.id=n.id;
  if(k==='note'){g.setAttribute('class','node k-note');g.innerHTML='<text class="note" x="0" y="14"></text>';nodesG.append(g);return nodeEls[n.id]={g,note:true,nm:g.firstChild}}
- g.setAttribute('class','node');const port=(k==='store'||k==='external')?'':`<circle class="port" cx="${NW}" cy="${NH/2}" r="6.5"><title>Drag to another node to connect</title></circle>`;
- g.innerHTML=`<rect class="box" width="${NW}" height="${NH}" rx="10"/><rect x="0" y="10" width="4" height="${NH-20}" rx="2" fill="${GC[T.group]}"/>
+ g.setAttribute('class','node');g.setAttribute('tabindex','0');g.setAttribute('role','button');const port=(k==='store'||k==='external')?'':`<circle class="port" cx="${NW}" cy="${NH/2}" r="6.5"><title>Drag to another node to connect</title></circle>`;
+ g.innerHTML=`<title></title><rect class="box" width="${NW}" height="${NH}" rx="10"/><rect x="0" y="10" width="4" height="${NH-20}" rx="2" fill="${GC[T.group]}"/>
 <text class="ico" x="13" y="28">${T.icon}</text><text class="nm" x="40" y="21"></text><text class="ty" x="40" y="35"></text>
 <text class="s1" x="13" y="53"></text><text class="s2" x="13" y="67"></text>
 <rect class="gbg" x="6" y="${NH-4}" width="${NW-12}" height="2.5" rx="1"/><rect class="gfill" x="6" y="${NH-4}" width="0" height="2.5" rx="1"/>
-<circle class="dot" cx="${NW-13}" cy="14" r="4.5"/><text class="zap" x="${NW-36}" y="19">⚡</text>${port}`+(k==='producer'?`<g class="one"><title>Send ONE message now (works while paused or with sources held)</title><rect x="${NW-42}" y="${NH-34}" width="30" height="16" rx="4"/><text x="${NW-36}" y="${NH-22}">▶ 1</text></g>`:'')+(k==='store'?tableRows(n):'');
+<path class="dot" transform="translate(${NW-13},14)"/><text class="zap" x="${NW-36}" y="19">⚡</text>${port}`+(k==='producer'?`<g class="one"><title>Send ONE message now (works while paused or with sources held)</title><rect x="${NW-42}" y="${NH-34}" width="30" height="16" rx="4"/><text x="${NW-36}" y="${NH-22}">▶ 1</text></g>`:'')+(k==='store'?tableRows(n):'');
  nodesG.append(g);const q=s=>g.querySelector(s),tr={};for(const x of g.querySelectorAll('[data-tx]'))tr[x.dataset.tx]=x;
- return nodeEls[n.id]={g,nm:q('.nm'),ty:q('.ty'),s1:q('.s1'),s2:q('.s2'),gf:q('.gfill'),dot:q('.dot'),tr}}
+ return nodeEls[n.id]={g,tip:g.firstChild,nm:q('.nm'),ty:q('.ty'),s1:q('.s1'),s2:q('.s2'),gf:q('.gfill'),dot:q('.dot'),tr}}
 /* a database's tables are drawn as rows under the node; each row is a connection point */
 const TRH=20,trY=i=>NH+3+i*TRH,nodeH=n=>NH+(KIND(n)==='store'&&n.cfg.tables&&n.cfg.tables.length?n.cfg.tables.length*TRH+4:0);
 function tableRows(n){return(n.cfg.tables||[]).map((t,i)=>{const y=trY(i);return`<g class="trow" data-t="${t.id}"><title>${esc(TKIND[t.kind])} — drop a connection from a service on this row to write to it</title><rect x="8" y="${y}" width="${NW-16}" height="${TRH-2}" rx="4"/><text x="18" y="${y+13}" data-tx="${t.id}"></text><circle class="tin" cx="8" cy="${y+9}" r="3.5"/>`+(t.kind==='queue'?`<circle class="port tport" data-t="${t.id}" cx="${NW-8}" cy="${y+9}" r="6"><title>Drag to the polling loop (or service) that reads this table</title></circle>`:'')+'</g>'}).join('')}
 function tAnchor(n,tid,side){const i=(n.cfg.tables||[]).findIndex(t=>t.id===tid);return i<0?null:{x:n.x+(side>0?NW-8:8),y:n.y+trY(i)+9}}
 function mkEdge(e){const g=document.createElementNS(SVGNS,'g');g.setAttribute('class','edge');g.dataset.id=e.id;
- g.innerHTML='<path class="hit"/><path class="ln" marker-end="url(#arr)"/><text class="el"></text>';edgesG.append(g);
- return edgeEls[e.id]={g,hit:g.children[0],ln:g.children[1],label:g.children[2],stat:'',dur:0}}
+ g.innerHTML='<path class="hit"><title></title></path><path class="ln" marker-end="url(#arr)"/><text class="el"></text>';edgesG.append(g);
+ return edgeEls[e.id]={g,hit:g.children[0],ln:g.children[1],label:g.children[2],tip:g.children[0].firstChild,stat:'',short:'',dur:0}}
 function geom(e){const a=nodeById(e.from),b=nodeById(e.to),ax=a.x+NW/2,ay=a.y+NH/2,bx=b.x+NW/2,by=b.y+NH/2,dx=bx-ax,dy=by-ay;let p0,p3,c1,c2;
  if(e.cfg.table){const into=KIND(b)==='store',st=into?b:KIND(a)==='store'?a:null,o=into?a:b;
   if(st&&tableOf(st,e.cfg.table)){const s=(o.x+NW/2)>=(st.x+NW/2)?1:-1,T=tAnchor(st,e.cfg.table,s),O={x:o.x+NW/2-s*NW/2,y:o.y+NH/2+(into?7:-7)},d=Math.max(30,Math.abs(O.x-T.x)*0.45),cT={x:T.x+s*d,y:T.y},cO={x:O.x-s*d,y:O.y};
@@ -1795,7 +1862,7 @@ function renderGraph(){$('#empty').hidden=M.nodes.length>0||M.groups.length>0;no
  refreshStatic();applySel();updNodes();updEdges();updGroups()}
 function refreshStatic(){for(const n of M.nodes){const el=nodeEls[n.id];if(!el)continue;const k=KIND(n);
   if(el.note){el.nm.textContent=n.name;continue}
-  el.nm.textContent=cut(n.name,19);el.ty.textContent=TYPES[n.type].label;el.g.classList.toggle('faulty',isFaulty(n.fault,FDEF[k]))}
+  el.nm.textContent=cut(n.name,zfar?12:19);el.sk='';el.g.setAttribute('aria-label',n.name+', '+TYPES[n.type].label);el.ty.textContent=TYPES[n.type].label;el.g.classList.toggle('faulty',isFaulty(n.fault,FDEF[k]))}
  for(const e of M.edges){const el=edgeEls[e.id];if(!el)continue;const a=nodeById(e.from),b=nodeById(e.to),ka=KIND(a);let st='';
   if(ka==='service'){const i=a.cfg.actions.findIndex(x=>x.edge===e.id);if(i>=0){const x=a.cfg.actions[i],ob=x.outbox&&MSGK[KIND(b)],T=tableOf(b,e.cfg.table);st='#'+(i+1)+(T?' → '+T.name:'')+(x.tx?' tx':'')+(ob?' outbox '+(a.cfg.outboxMode==='cdc'?'CDC':'⟳'+a.cfg.outboxPollMs+'ms×'+a.cfg.outboxBatch):'')+(x.when==='fallback'?' fallback':'')+(x.op==='read'?' read':'')}}
   else if(e.cfg.poll){const p=e.cfg.poll,T=tableOf(a,e.cfg.table);st=(T?T.name+' ':'')+'⟳'+p.everyMs+'ms×'+p.batch}
@@ -1804,10 +1871,11 @@ function refreshStatic(){for(const n of M.nodes){const el=nodeEls[n.id];if(!el)c
   if(ka==='service'){const x=a.cfg.actions.find(x=>x.edge===e.id);if(x){if(x.guard&&KIND(b)==='store')st+=' if-newer';if(x.types)st+=' ['+cut(x.types,18)+']';if(x.as)st+=' as '+cut(x.as,16)}}
   if(b&&KIND(b)==='log'&&e.cfg.pkey&&e.cfg.pkey!=='entity')st+=(st?' ':'')+(e.cfg.pkey==='none'?'no key':'key÷'+(e.cfg.pkeyN|0||3));
   if(e.cfg.types&&b&&KIND(b)==='service'&&(MSGK[ka]||e.cfg.poll))st+=(st?' ':'')+'only '+cut(e.cfg.types,20);
-  el.stat=st;el.g.classList.toggle('async',!!MSGK[ka]||!!e.cfg.poll);el.g.classList.toggle('faulty',isFaulty(e.fault,EFDEF))}}
-function applySel(){for(const id in nodeEls)nodeEls[id].g.classList.toggle('sel',!!sel&&sel.t==='n'&&sel.id===id);for(const id in edgeEls)edgeEls[id].g.classList.toggle('sel',!!sel&&sel.t==='e'&&sel.id===id);for(const id in groupEls)groupEls[id].g.classList.toggle('sel',!!sel&&sel.t==='g'&&sel.id===id)}
+  el.stat=st;{const m=/^#\d+/.exec(st);el.short=m?m[0]:''}el.tip.textContent=a.name+' → '+b.name+(st?' · '+st:'');el.g.classList.toggle('async',!!MSGK[ka]||!!e.cfg.poll);el.g.classList.toggle('faulty',isFaulty(e.fault,EFDEF))}}
+function applySel(){applySel0();const sid=sel&&sel.t==='n'?sel.id:null;for(const e of M.edges){const el=edgeEls[e.id];if(el)el.g.classList.toggle('rel',!!sid&&(e.from===sid||e.to===sid))}applyTrace(true)}
+function applySel0(){for(const id in nodeEls)nodeEls[id].g.classList.toggle('sel',!!sel&&sel.t==='n'&&sel.id===id);for(const id in edgeEls)edgeEls[id].g.classList.toggle('sel',!!sel&&sel.t==='e'&&sel.id===id);for(const id in groupEls)groupEls[id].g.classList.toggle('sel',!!sel&&sel.t==='g'&&sel.id===id)}
 function select(s){if(s)gmark('sel');sel=s;applySel();if(sim)updGroups();renderInsp()}
-function applyVp(){vpG.setAttribute('transform',`translate(${vp.x},${vp.y}) scale(${vp.k})`)}
+function applyVp(){vpG.setAttribute('transform',`translate(${vp.x},${vp.y}) scale(${vp.k})`);const f=vp.k<0.6;if(f!==zfar){zfar=f;document.body.classList.toggle('zfar',f);if(M&&sim&&Object.keys(nodeEls).length)refreshStatic()}}
 function fitView(){if(!M.nodes.length&&!M.groups.length){vp={x:30,y:20,k:1};return applyVp()}let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
  for(const n of M.nodes){x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x+(KIND(n)==='note'?n.name.length*7.5:NW));y1=Math.max(y1,n.y+(KIND(n)==='note'?20:nodeH(n)))}
  for(const g of M.groups){x0=Math.min(x0,g.x);y0=Math.min(y0,g.y);x1=Math.max(x1,g.x+g.w);y1=Math.max(y1,g.y+g.h)}
@@ -1857,6 +1925,8 @@ function delSel(){if(!sel)return;snap('delete');if(sel.t==='n'){const n=nodeById
 document.addEventListener('keydown',ev=>{const t=ev.target.tagName;if(t==='INPUT'||t==='TEXTAREA'||t==='SELECT')return;
  if((ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='z'){undo();ev.preventDefault();return}
  if(ev.ctrlKey||ev.metaKey||ev.altKey)return;
+ if((ev.key===' '||ev.key==='Enter')&&(t==='BUTTON'||t==='SUMMARY'||t==='A'))return;
+ if(ev.key==='Enter'){const ng=ev.target.closest&&ev.target.closest('.node');if(ng){select({t:'n',id:ng.dataset.id});ev.preventDefault()}return}
  if(ev.key==='Delete'||ev.key==='Backspace'){if(sel){delSel();toast('Deleted — Ctrl+Z brings it back');ev.preventDefault()}}
  else if(ev.key==='f'||ev.key==='F')fitView()
  else if(ev.key===' '){setRun(!running);ev.preventDefault()}
@@ -1900,6 +1970,7 @@ function inspNode(n){const T=TYPES[n.type],k=T.kind;
  const nm=h('input',{spellcheck:'false'});nm.value=n.name;nm.oninput=()=>{n.name=nm.value;refreshStatic();save()};
  insp.append(h('div',{class:'hd'},h('span',{style:'font-size:18px'},T.icon),nm,h('button',{class:'sm warn',onclick:delSel},'Delete')),h('div',{class:'muted',style:'margin:5px 0 2px;font-size:12px'},T.label+' — '+T.desc));
  if(k==='note')return;
+ insp.append(h('div',{id:'nowS',class:'now'}));
  const grp=n.group&&groupById(n.group);if(grp)insp.append(h('div',{class:'btns'},h('button',{class:'sm',onclick:()=>select({t:'g',id:grp.id})},'🗂 Runs inside '+grp.name+(allSgs(grp).length>1&&REPL[k]?' — one copy per server group ('+allSgs(grp).length+')':'')+' — open the application')));
  let cf=CF[k];if(n.type==='cron'){const sched=n.cfg.mode==='schedule';cf=[CF.sched[0]].concat(sched?CF.sched.slice(1):CF.producer.slice(0,5),CF.producer.slice(5))}
  insp.append(sec('Configuration',flds(n.cfg,cf,key=>{onCfg();if(key==='mode'){sim.view(n).last=null;renderInsp()}},k,Object.assign(clone(KDEF[k]),T.d||{})),true));
@@ -2043,12 +2114,12 @@ function depById(id){const x=depFaults().find(x=>x[0].id===id);return x&&x[0]}
 function captureFaults(){const f={},cap=(o,d)=>{const x={};for(const k in d)if(o.fault[k]!==d[k])x[k]=o.fault[k];if(Object.keys(x).length)f[o.id]=x};
  for(const n of M.nodes)cap(n,FDEF[KIND(n)]);for(const e of M.edges)cap(e,EFDEF);for(const [o,d] of depFaults())cap(o,d);return f}
 function healAll(quiet){healTok++;sim.cancelCutover();for(const n of M.nodes)n.fault=clone(FDEF[KIND(n)]);for(const e of M.edges)e.fault=clone(EFDEF);for(const [o,d] of depFaults())o.fault=clone(d);sim.syncFaults();updGroups();refreshStatic();save();
- if(!quiet){sim.mark('✚ healed');sim.log('ok','All faults cleared');if(sel)renderInsp()}}
+ if(!quiet){xpHeal();sim.mark('✚ healed');sim.log('ok','All faults cleared');if(sel)renderInsp()}}
 function applyScenario(s){gmark('fault');healAll(true);let miss=0;
  for(const id in s.faults){const t=nodeById(id)||edgeById(id)||depById(id);if(t)Object.assign(t.fault,s.faults[id]);else miss++}
  sim.syncFaults();
  for(const tg of s.triggers||[]){if(tg.group)gtrigger(tg.group,tg.what,tg);else trigger(tg.node,tg.what)}
- sim.syncFaults();refreshStatic();save();sim.mark('⚡ '+s.name);sim.log('fault','Scenario applied: '+s.name);
+ sim.syncFaults();refreshStatic();save();xpStart(s.name,false,!Object.keys(s.faults||{}).length,s.heal);sim.mark('⚡ '+s.name);sim.log('fault','Scenario applied: '+s.name);
  if(s.heal>0){const tok=healTok,sm=sim;sim.at(s.heal*1000,()=>{if(tok===healTok&&sm===sim){healAll();toast('Scenario healed — watch the recovery')}})}
  if(!running)setRun(true);toast('Applied: '+s.name+(s.heal>0?' (heals after '+s.heal+' s)':'')+(miss?' — '+miss+' target(s) no longer exist':''));if(sel)renderInsp()}
 function inspSystem(){const d=h('textarea',{id:'desc',spellcheck:'false',placeholder:'Describe this system and what to try…'});d.value=M.desc||'';d.oninput=()=>{M.desc=d.value;save()};
@@ -2075,6 +2146,7 @@ function liveInsp(){const box=$('#live');if(!box||!sel)return;let rows=[];
    rows.push([s.name,(sim.gOff(s)?sgState(s):Math.round(sim.gW(s))+'% of traffic')+' · '+sim.gLive(s)+'/'+sim.gN(s)+' up'],['   requests / errors',f1(i)+' / '+f1(e)+' per s'+(i>0.2?' ('+pct(e/i)+')':'')],['   workers busy',b+' / '+w])}
   rows.unshift(['Cluster shown',c.name+(g.clusters.length>1?' (1 of '+g.clusters.length+')':'')],['Into its services',f1(ti)+' per s, '+f1(te)+' failing'])}
  else if(sel.t==='n'){const n=nodeById(sel.id);if(!n)return;const r=sim.view(n),c=r.c,k=KIND(n);
+  {const ns=$('#nowS'),st=nodeEls[n.id]&&nodeEls[n.id].state;if(ns&&st)ns.innerHTML='<span class="badge '+st[0]+'">'+st[1]+'</span><span>'+(k==='producer'?f1(r.rate.in)+'/s sent':f1(r.rate.in)+'/s in · '+(r.rate.in>0.2?pct(Math.min(1,r.rate.err/r.rate.in)):'0%')+' errors · p99 '+ms(r.p99||null))+'</span>'}
   if(k==='producer'){const o=$('#one');if(o){const tr=oneTr&&oneTr.src===n.id?oneTr:null,s=tr?tr.id+'|'+tr.ev.length+'|'+tr.final+'|'+tr.clientDone:'-';if(o.dataset.s!==s){o.dataset.s=s;o.innerHTML=tr?traceHtml(tr):'<p class="muted" style="font-size:12px;margin:2px 0">Press ▶ 1 on the node (or "Send one message" above) to push a single message through and see every hop it takes here. Tip: use "✋ Hold sources" to silence the automatic traffic first.</p>'}}
    if(n.cfg.mode==='schedule')rows.push(['Next batch in',n.fault.pause||sim.manual||sim.off(n)?'held':(sim.nextFire(n,r)/1000).toFixed(1)+' s'],['Last batch size',r.lastCount])}
   rows=rows.concat([['Received',c.in],['Succeeded',c.ok],['Failed',c.err]]);rows.push(['Rate in / ok / err',f1(r.rate.in)+' / '+f1(r.rate.ok)+' / '+f1(r.rate.err)+' per s'],['Latency p50 / p99',ms(r.p50)+' / '+ms(r.p99)]);
@@ -2098,7 +2170,7 @@ function liveInsp(){const box=$('#live');if(!box||!sel)return;let rows=[];
 
 /* ---------- live canvas updates ---------- */
 function updNodes(){for(const n of M.nodes){const el=nodeEls[n.id];if(!el||el.note)continue;const k=KIND(n),r=sim.view(n),c=r.c,ra=r.rate;let s1='',s2='',g=0,down=sim.off(n);
-  const er=ra.err>0.05?' · err '+f1(ra.err)+'/s':'';
+  const er='';
   if(k==='producer'){const held=n.fault.pause?' (paused)':sim.manual?' (held)':'';s1=n.cfg.mode==='schedule'?(held||down?'batch'+(held||' (app down)'):'batch of '+cut(String(n.cfg.release),9)+' in '+(sim.nextFire(n,r)/1000).toFixed(0)+' s'):f1(ra.in)+'/s sent'+held;const d=ra.ok+ra.err;s2=d>0?'ok '+pct(ra.ok/d):n.cfg.mode==='schedule'&&r.lastCount?'last '+r.lastCount:''}
   else if(k==='service'){const w=sim.workers(n);s1='in '+f1(ra.in)+'/s'+er;const crashed=r.downUntil>sim.t;if(crashed)down=true;
    const ib=r.inbox.length+r.ibFly;s2=crashed?'restarting…':down?'down'+(r.outbox.length?' · outbox '+r.outbox.length:'')+(ib?' · inbox '+ib:''):(n.cfg.inbox?'inbox '+ib+' · busy '+r.busy+'/'+w:'busy '+r.busy+'/'+w+' · queue '+r.q.length)+(r.outbox.length?' · outbox '+r.outbox.length:'');
@@ -2111,16 +2183,21 @@ function updNodes(){for(const n of M.nodes){const el=nodeEls[n.id];if(!el||el.no
   else if(k==='queue'){s1='in '+f1(ra.in)+'/s'+er;s2='depth '+r.ready.length+' · in flight '+r.infl+(c.dlq?' · DLQ '+c.dlq:'');g=r.ready.length/Math.max(1,Math.min(n.cfg.capacity,1000))}
   else if(k==='pubsub'){s1='in '+f1(ra.in)+'/s'+er;s2=c.undeliv?'undelivered '+c.undeliv:''}
   else if(k==='proxy'){s1='in '+f1(ra.in)+'/s'+er;let ej=0;for(const id in r.hl)if(r.hl[id].until>sim.t)ej++;s2=(c.thr?'throttled '+c.thr:'')+(ej?(c.thr?' · ':'')+ej+' ejected':'')+(c.hit?' edge hits '+c.hit:'')}
-  g=Math.max(0,Math.min(1,g));const ep=ra.in>0.2?ra.err/ra.in:0;
-  el.s1.textContent=s1;el.s2.textContent=s2;el.gf.setAttribute('width',((NW-12)*g).toFixed(1));el.gf.style.fill=g>0.8?'var(--er)':g>0.5?'var(--wa)':'';
-  el.dot.setAttribute('class','dot '+(down||ep>0.5?'r':ep>0.02||g>0.6||n.fault.hang?'a':ra.in>0.05?'g':''));el.g.classList.toggle('down',down);el.g.classList.toggle('warnst',!down&&(ep>0.02||g>0.6))}}
-function updEdges(){for(const e of M.edges){const el=edgeEls[e.id];if(!el)continue;const s=sim.est(e),rate=s.rate,fr=s.frate;let t=el.stat;
+  g=Math.max(0,Math.min(1,g));const prod=k==='producer',ep=ra.in>0.2?Math.min(1,ra.err/ra.in):0,et=!prod&&ra.err>0.05?(ra.in>0.2?pct(ep)+' err':f1(ra.err)+'/s err'):'',pt=!prod&&ra.in>0.05&&r.p99>0?'p99 '+ms(r.p99):'';
+  if(!prod)s1=s1.replace(/^in /,'');
+  const k1=s1+'|'+et+'|'+pt;if(el.k1!==k1){el.k1=k1;el.s1.innerHTML=esc(s1)+(et?'<tspan class="er"> · '+et+'</tspan>':'')+(pt?' · '+pt:'')}
+  if(el.k2!==s2){el.k2=s2;el.s2.textContent=s2}
+  el.gf.setAttribute('width',((NW-12)*g).toFixed(1));el.gf.style.fill=g>0.8?'var(--er)':g>0.5?'var(--wa)':'';
+  const stc=down||ep>0.5?'r':ep>0.02||g>0.6||n.fault.hang?'a':ra.in>0.05?'g':'i',sk=stc+(down?1:0);
+  if(el.sk!==sk){el.sk=sk;el.state=[stc,stc==='r'?(down?'■ Down':'■ Failing'):stc==='a'?'▲ Degraded':stc==='g'?'● Healthy':'○ Idle'];el.dot.setAttribute('class','dot '+stc);el.dot.setAttribute('d',DOTS[stc]);el.tip.textContent=n.name+' — '+TYPES[n.type].label+' — '+el.state[1].slice(2)}
+  el.g.classList.toggle('down',down);el.g.classList.toggle('warnst',!down&&(ep>0.02||g>0.6))}}
+function updEdges(){for(const e of M.edges){const el=edgeEls[e.id];if(!el)continue;const s=sim.est(e),rate=s.rate,fr=s.frate;let t=vp.k>=0.85||(sel&&(sel.id===e.id||sel.id===e.from||sel.id===e.to))?el.stat:el.short;
   if(rate>0.05)t+=(t?' · ':'')+f1(rate)+'/s';if(fr>0.05)t+=' ✕'+Math.round(100*Math.min(1,fr/Math.max(rate,0.01)))+'%';if(el.g.classList.contains('faulty'))t='⚡ '+t;
   el.label.textContent=t;const ratio=rate>0.05?Math.min(1,fr/rate):0;
-  if(view==='flow'){el.g.classList.add('flow');el.g.classList.toggle('idle',rate<0.05);el.g.classList.remove('bad');el.ln.style.strokeWidth=(1.5+Math.log10(1+rate)*2).toFixed(2);
+  if(view==='flow'){el.g.classList.add('flow');el.g.classList.toggle('idle',rate<0.05);el.g.classList.remove('bad','deg');el.ln.style.strokeWidth=(1.5+Math.log10(1+rate)*2).toFixed(2);
    el.ln.style.stroke=rate<0.05?'':`rgb(${Math.round(76+172*ratio)},${Math.round(154-73*ratio)},${Math.round(255-182*ratio)})`;
    const d=Math.max(0.15,Math.min(2.5,5/(rate+1)+0.15))/Math.max(0.25,Math.min(4,speed));if(Math.abs(d-el.dur)>el.dur*0.2){el.dur=d;el.ln.style.animationDuration=d.toFixed(2)+'s'}}
-  else{el.g.classList.remove('flow','idle');el.g.classList.toggle('bad',ratio>=0.3);el.ln.style.strokeWidth='';el.ln.style.stroke='';el.dur=0}}}
+  else{el.g.classList.remove('flow','idle');el.g.classList.toggle('bad',ratio>=0.3);el.g.classList.toggle('deg',ratio>=0.02&&ratio<0.3);el.ln.style.strokeWidth='';el.ln.style.stroke='';el.dur=0}}}
 function onVis(eid,k){if(view!=='messages')return;const now=performance.now(),th=visT[eid]||(visT[eid]=[0,0,0,0]);if(now-th[k]<40||parts.length>900)return;th[k]=now;parts.push({eid,k,t0:now+(k===1||k===2?240:0)})}
 function drawFx(now){const dpr=window.devicePixelRatio||1,W=Math.round(fx.clientWidth*dpr),H=Math.round(fx.clientHeight*dpr);if(fx.width!==W||fx.height!==H){fx.width=W;fx.height=H}
  const c=fx.getContext('2d');c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,W,H);if(!parts.length)return;
@@ -2132,7 +2209,7 @@ function drawFx(now){const dpr=window.devicePixelRatio||1,W=Math.round(fx.client
 
 /* ---------- charts ---------- */
 function nice(v){if(v<=0)return 1;const e=Math.pow(10,Math.floor(Math.log10(v))),m=v/e;return(m<=1?1:m<=2?2:m<=5?5:10)*e}
-function chart(cv,title,series,hist,marks,N){N=N||240;const dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;if(!W||!H)return;
+function chart(cv,title,series,hist,marks,N,band){N=N||240;const dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;if(!W||!H)return;
  if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)}
  const c=cv.getContext('2d');c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,W,H);
  const data=hist.slice(-N),L=38,R=8,T=20,Bm=6,w=W-L-R,hh=H-T-Bm;let mx=0;
@@ -2140,6 +2217,7 @@ function chart(cv,title,series,hist,marks,N){N=N||240;const dpr=window.devicePix
  c.font='10.5px system-ui';c.textBaseline='middle';
  for(let i=0;i<=2;i++){const y=T+hh*(1-i/2);c.strokeStyle='#263040';c.lineWidth=1;c.beginPath();c.moveTo(L,y+0.5);c.lineTo(W-R,y+0.5);c.stroke();c.fillStyle='#8391a3';c.textAlign='right';const v=mx*i/2;c.fillText(v>=1000?(v/1000)+'k':String(+v.toFixed(1)),L-5,y)}
  const X=i=>L+w*(i+N-data.length)/(N-1);
+ if(band&&data.length){const tEnd=data[data.length-1].t,span=(N-1)*500,xa=Math.max(L,L+w*(1-(tEnd-band[0])/span)),xb=Math.min(W-R,band[1]==null?W-R:L+w*(1-(tEnd-band[1])/span));if(xb>xa){c.fillStyle='#d2992220';c.fillRect(xa,T,xb-xa,hh)}}
  if(marks&&data.length){const tEnd=data[data.length-1].t,span=(N-1)*500;c.textAlign='left';
   let mi=0;for(const m of marks){const x=L+w*(1-(tEnd-m.t)/span);if(x<L||x>W-R)continue;const ly=T+7+(mi++%3)*12;const heal=m.label[0]==='✚'||m.label.slice(0,6)==='healed';c.strokeStyle=heal?'#3fb95099':'#d2992299';c.setLineDash([3,3]);c.beginPath();c.moveTo(x,T);c.lineTo(x,T+hh);c.stroke();c.setLineDash([]);
    c.fillStyle=heal?'#3fb950':'#d29922';c.fillText(cut(m.label,22),Math.min(x+3,W-R-110),ly)}}
@@ -2153,10 +2231,10 @@ function buildTabs(){const t=$('#tabs');t.innerHTML='';for(const [id,label] of T
  t.append(h('span',{class:'sp'}),h('button',{id:'dkT',onclick:()=>{L.min=!L.min;applyLayout(true);if(!L.min)buildDock()}},L.min?'▴ Show':'▾ Hide'))}
 let kp={};
 function buildDock(){dockBody.innerHTML='';sig={};
- if(dockTab==='dash'){kp={};const k=h('div',{class:'kpis'});for(const [id,label,title] of [['req','Requests completed'],['succ','Client success','Share of requests where the client received a successful response (all time, and last second)'],['tput','Throughput ok/s'],['errs','Client errors/s'],['p50','Latency p50'],['p99','Latency p99'],['infl','In flight / lagging','Requests whose effects are still in motion: queued, retrying, or sitting unconsumed in a topic'],['anom','Consistency anomalies','See the Consistency audit tab']]){const b=h('b',null,'–');kp[id]=b;k.append(h('div',{class:'kpi',title:title||''},h('small',null,label),b))}
-  dockBody.append(h('div',{class:'dash'},k,h('div',{class:'ch'},h('canvas',{id:'c1'})),h('div',{class:'ch'},h('canvas',{id:'c2'})),h('div',{class:'ch'},h('canvas',{id:'c3'}))))}
- else if(dockTab==='audit'){const r=h('div',{id:'auR'});r.addEventListener('click',ev=>{const a=ev.target.closest('[data-tr]');if(a){const id=+a.dataset.tr;selTrace=sim.A.recent.find(t=>t.id===id)||null;sig.au='';updDock()}else if(ev.target.closest('[data-close]')){selTrace=null;sig.au='';updDock()}});
-  dockBody.append(h('div',{class:'audit'},h('div',{id:'auL'}),r))}
+ if(dockTab==='dash'){const x=h('div',{id:'xpc'});x.addEventListener('pointerdown',ev=>{if(ev.target.closest('[data-audit]'))$('#tab-audit').click()});
+  dockBody.append(h('div',{class:'dash'},x,h('div',{class:'ch'},h('canvas',{id:'c1'})),h('div',{class:'ch'},h('canvas',{id:'c2'})),h('div',{class:'ch'},h('canvas',{id:'c3'}))))}
+ else if(dockTab==='audit'){const r=h('div',{id:'auR'});r.addEventListener('click',ev=>{const a=ev.target.closest('[data-tr]');if(a){const id=+a.dataset.tr;selTrace=sim.A.recent.find(t=>t.id===id)||null;sig.au='';updDock()}else if(ev.target.closest('[data-close]')){selTrace=null;sig.au='';updDock()}else if(ev.target.closest('[data-clr]')){auF=null;sig.au='';updDock()}});
+  const l=h('div',{id:'auL'});l.addEventListener('pointerdown',auPick);dockBody.append(h('div',{class:'audit'},l,r))}
  else if(dockTab==='trade'){const r=h('div',{id:'trR'});r.addEventListener('click',ev=>{const a=ev.target.closest('[data-n]');if(a&&nodeById(a.dataset.n))select({t:'n',id:a.dataset.n})});dockBody.append(h('div',{class:'trade'},h('div',{id:'trL'}),r))}
  else dockBody.append(h('div',{class:'logl',id:'logl'}));
  updDock()}
@@ -2170,27 +2248,27 @@ const EV={done:['','handler finished in'],fx:['y','effect applied at'],dupfx:['x
 function nm(id){const n=sim.node(id)||nodeById(String(id).split('@')[0]);return n?n.name:'(removed)'}
 function setHtml(el,html){const st=el.scrollTop;el.innerHTML=html;el.scrollTop=st}
 function updDock(){if($('#dock').classList.contains('min'))return;const A=sim.A,G=sim.G;
- if(dockTab==='dash'){const last=G.hist[G.hist.length-1]||{},d=A.ok+A.fail,rec=(last.ok||0)+(last.err||0);
-  kp.req.textContent=A.done.toLocaleString();kp.succ.textContent=d?pct(A.ok/d)+(rec>0?'  ·  now '+pct(last.ok/rec):''):'–';kp.succ.parentNode.className='kpi '+(rec>0&&last.ok/rec<0.95?'bad':rec>0?'good':'');
-  kp.tput.textContent=f1(last.ok||0);kp.errs.textContent=f1(last.err||0);kp.errs.parentNode.className='kpi '+((last.err||0)>0.05?'bad':'');kp.p50.textContent=ms(last.p50);kp.p99.textContent=ms(last.p99);
-  kp.infl.textContent=(A.created-A.done).toLocaleString();kp.anom.textContent=A.anom.toLocaleString()+(A.done?'  ('+pct(A.anom/A.done)+')':'');kp.anom.parentNode.className='kpi '+(A.anom?'bad':A.done?'good':'');
-  chart($('#c1'),'Client throughput (req/s)',[{c:'#3fb950',l:'ok',get:x=>x.ok},{c:'#f85149',l:'failed',get:x=>x.err}],G.hist,sim.marks);
-  chart($('#c2'),'Client latency (ms)',[{c:'#4c9aff',l:'p50',get:x=>x.p50},{c:'#a371f7',l:'p99',get:x=>x.p99}],G.hist,sim.marks);
-  chart($('#c3'),'Backlog and anomalies',[{c:'#d29922',l:'in flight / lag',get:x=>x.infl},{c:'#f85149',l:'anomalies/s',get:x=>x.an}],G.hist,sim.marks)}
+ if(dockTab==='dash'){const lt=G.hist.length?G.hist[G.hist.length-1].t:0,xs=lt+'|'+(XP?XP.phase+XP.name:'')+'|'+A.done;if(sig.xp!==xs){sig.xp=xs;setHtml($('#xpc'),xpHtml())}
+  const band=XP&&!XP.noFault?[XP.s0.t,XP.s1?XP.s1.t:null]:null;
+  chart($('#c1'),'Client throughput (req/s)',[{c:'#3fb950',l:'ok',get:x=>x.ok},{c:'#f85149',l:'failed',get:x=>x.err}],G.hist,sim.marks,0,band);
+  chart($('#c2'),'Client latency (ms)',[{c:'#4c9aff',l:'p50',get:x=>x.p50},{c:'#a371f7',l:'p99',get:x=>x.p99}],G.hist,sim.marks,0,band);
+  chart($('#c3'),'Backlog and anomalies',[{c:'#d29922',l:'in flight / lag',get:x=>x.infl},{c:'#f85149',l:'anomalies/s',get:x=>x.an}],G.hist,sim.marks,0,band)}
  else if(dockTab==='audit'){
-  let t='<table><tr><th title="One row per traffic source. Every request is traced through the whole system until all of its effects have settled.">Flow</th><th title="Requests fully settled">settled</th><th title="Still in motion: queued, retrying, or waiting in a topic">in flight</th><th title="Share where the client received a success response">client ok</th><th title="Every invariant held: a success with all effects applied exactly once, or a failure that left nothing behind">✓ clean</th>'+ACOLS.map(c=>'<th title="'+esc(c[2])+'">'+c[1]+'</th>').join('')+'</tr>';
-  const row=(name,b,cr)=>{const cl=b.clean+b.cleanFail+b.rejected;return'<tr><td>'+esc(name)+'</td><td>'+b.done+'</td><td class="'+(cr-b.done?'':'z')+'">'+(cr-b.done)+'</td><td>'+(b.done?pct(b.ok/b.done):'–')+'</td><td class="'+(cl?'g':'z')+'">'+cl+'</td>'+ACOLS.map(c=>'<td class="'+(b[c[0]]?c[3]:'z')+'">'+b[c[0]]+'</td>').join('')+'</tr>'};
-  for(const n of M.nodes)if(KIND(n)==='producer'){const b=A.by[n.id];if(b)t+=row(n.name,b,b.created)}
+  let t=auVerdict()+'<table><tr><th title="One row per traffic source. Every request is traced through the whole system until all of its effects have settled.">Flow</th><th title="Requests fully settled">settled</th><th title="Still in motion: queued, retrying, or waiting in a topic">in flight</th><th title="Share where the client received a success response">client ok</th><th title="Every invariant held: a success with all effects applied exactly once, or a failure that left nothing behind">✓ clean</th>'+ACOLS.map(c=>'<th title="'+esc(c[2])+'">'+c[1]+'</th>').join('')+'</tr>';
+  const row=(name,b,cr,src)=>{const cl=b.clean+b.cleanFail+b.rejected;return'<tr><td>'+esc(name)+'</td><td>'+b.done+'</td><td class="'+(cr-b.done?'':'z')+'">'+(cr-b.done)+'</td><td>'+(b.done?pct(b.ok/b.done):'–')+'</td><td class="'+(cl?'g':'z')+'">'+cl+'</td>'+ACOLS.map(c=>'<td class="'+(b[c[0]]?c[3]+' pk" data-f="'+c[0]+'" data-src="'+(src||''):'z')+'">'+b[c[0]]+'</td>').join('')+'</tr>'};
+  for(const n of M.nodes)if(KIND(n)==='producer'){const b=A.by[n.id];if(b)t+=row(n.name,b,b.created,n.id)}
   t+=row('All flows',A,A.created)+'</table>';
   let rc='';for(const n of M.nodes){const c=sim.view(n).c;if(c.w)rc+='<tr><td>'+esc(n.name)+'</td><td>'+(c.u|0)+'</td><td>'+c.w+'</td><td class="'+(c.w-(c.u|0)?'b':'z')+'">'+(c.w-(c.u|0))+'</td><td class="'+(c.dedup?'g':'z')+'">'+(c.dedup|0)+'</td><td class="'+(c.undo?'w':'z')+'">'+(c.undo|0)+'</td></tr>'}
   t+='<h3>Reconciliation — what each store, topic and API actually received</h3>'+(rc?'<table><tr><th>Component</th><th title="Requests that produced at least one effect here">distinct requests</th><th>effects applied</th><th title="Effects applied beyond the first for the same request">duplicates</th><th title="Repeats rejected by idempotency">suppressed</th><th title="Removed again by compensation">undone</th></tr>'+rc+'</table>':'<p class="muted">Nothing written yet.</p>');
   t+='<p class="muted" style="font-size:11.5px;margin:8px 0 0">Hover a column heading for its definition. Suppressed duplicates: '+A.dedup+'. Stale writes refused by a version check: '+(A.vskip|0)+'. Retries: '+G.retries+'. Timeouts: '+G.timeouts+'.</p>';
   setHtml($('#auL'),t);
-  const s=A.anom+'|'+(selTrace?selTrace.id:'')+'|'+A.recent.length+'|'+(A.recent.length?A.recent[A.recent.length-1].id:0);if(sig.au===s)return;sig.au=s;let r='';
-  if(selTrace)r+=traceHtml(selTrace,true);
-  r+='<h3 style="margin-top:2px">Recent anomalies — click one to see its timeline</h3>';
-  if(!A.recent.length)r+='<p class="muted">None so far. Every settled request satisfied every invariant.</p>';
-  for(let i=A.recent.length-1;i>=Math.max(0,A.recent.length-70);i--){const tr=A.recent[i];r+='<div class="an'+(tr===selTrace?' on':'')+'" data-tr="'+tr.id+'"><span class="muted" style="width:54px">#'+tr.id+'</span><span style="flex:1">'+tr.flags.map(f=>'<span class="chip r">'+ACOLS.find(x=>x[0]===f)[1]+'</span>').join('')+'</span><span class="muted">'+esc(cut(nm(tr.src),16))+' · '+(tr.t0/1000).toFixed(1)+' s</span></div>'}
+  const s=A.anom+'|'+(selTrace?selTrace.id:'')+'|'+A.recent.length+'|'+(A.recent.length?A.recent[A.recent.length-1].id:0)+'|'+(auF?auF.f+auF.src:'');applyTrace();if(sig.au===s)return;sig.au=s;let r='';
+  if(selTrace)r+=traceHtml(selTrace,true)+'<p class="muted" style="font-size:11.5px;margin:-2px 0 8px">Its path is outlined in purple on the canvas.</p>';
+  const def=auF&&ACOLS.find(x=>x[0]===auF.f),list=A.recent.filter(tr=>!auF||(tr.flags.includes(auF.f)&&(!auF.src||String(tr.src).split('@')[0]===auF.src)));
+  r+='<h3 style="margin-top:2px">'+(auF?'Requests flagged “'+def[1]+'”'+(auF.src?' from '+esc(nm(auF.src)):''):'Recent anomalies')+' — click one to see its timeline</h3>';
+  if(auF)r+='<p class="hp">'+esc(def[2])+' <button class="sm" data-clr>Show all anomalies</button></p>';
+  if(!list.length)r+='<p class="muted">'+(auF?'None of the most recent '+A.recent.length+' anomalies match (only the latest 150 are kept).':'None so far. Every settled request satisfied every invariant.')+'</p>';
+  for(let i=list.length-1;i>=Math.max(0,list.length-70);i--){const tr=list[i];r+='<div class="an'+(tr===selTrace?' on':'')+'" data-tr="'+tr.id+'"><span class="muted" style="width:54px">#'+tr.id+'</span><span style="flex:1">'+tr.flags.map(f=>'<span class="chip r">'+ACOLS.find(x=>x[0]===f)[1]+'</span>').join('')+'</span><span class="muted">'+esc(cut(nm(tr.src),16))+' · '+(tr.t0/1000).toFixed(1)+' s</span></div>'}
   setHtml($('#auR'),r)}
  else if(dockTab==='trade'){const fnd=lint(),s=JSON.stringify(fnd);const sc=scorecard(fnd);setHtml($('#trL'),sc);if(sig.tr!==s){sig.tr=s;
    setHtml($('#trR'),'<h3 style="margin-top:2px">Design review — click a finding to select the component</h3>'+(fnd.length?fnd.map(f=>'<div class="li" data-n="'+(f.id||'')+'"><span class="lv '+f.lvl+'">'+f.lvl+'</span><div><b>'+esc(f.title)+'</b><span>'+esc(f.text)+'</span></div></div>').join(''):'<p class="muted">Add some components to get a review.</p>'))}}
@@ -2305,10 +2383,115 @@ function scorecard(fnd){const nn=M.nodes.filter(n=>KIND(n)!=='note'),cnt=l=>fnd.
   '<h3>Measured so far</h3><div class="kv">'+kv('Client success',d?pct(A.ok/d):'–')+kv('Requests with every invariant intact',A.done?pct(1-A.anom/A.done):'–')+kv('Latency p50 / p99 (now)',ms(last.p50)+' / '+ms(last.p99))+kv('Retries / timeouts',sim.G.retries+' / '+sim.G.timeouts)+'</div>'+
   '<p class="muted" style="font-size:11.5px">Each mechanism buys resilience or scale and costs moving parts. Compare designs under the same fault, not at rest.</p>'}
 
+/* ---------- status strip: what is true right now, wherever you are looking ---------- */
+/* every status is a shape as well as a colour: ● healthy, ▲ degraded, ■ down, ○ idle */
+const DOTS={g:'M-4.5,0a4.5,4.5 0 1,0 9,0a4.5,4.5 0 1,0 -9,0',i:'M-4,0a4,4 0 1,0 8,0a4,4 0 1,0 -8,0',a:'M0,-5.6L5.6,4.4H-5.6Z',r:'M-4.6,-4.6H4.6V4.6H-4.6Z'};
+/* null = a runtime override set by a cut-over, not a fault */
+const FLBL={down:'down',errorRate:v=>'errors '+v+'%',latencyMult:v=>'slow ×'+v,hang:'hanging',capacityPct:v=>'capacity '+v+'%',pause:'paused',surge:v=>'surge ×'+v,badPct:v=>'bad data '+v+'%',
+ partition:'partitioned',drop:v=>'drops '+v+'%',respDrop:v=>'loses replies '+v+'%',reset:v=>'resets '+v+'%',corrupt:v=>'corrupts '+v+'%',dup:v=>'duplicates '+v+'%',extraLatency:v=>'+'+v+' ms',
+ instDown:v=>v+' instance'+(v>1?'s':'')+' down',weight:null,stopped:null};
+const secs=x=>(x/1000).toFixed(1)+' s';
+let curFaults=[];
+function faultDesc(f,def){const o=[];if(!f||!def)return o;for(const k in def){if(f[k]===def[k])continue;const l=FLBL[k];if(l===null)continue;o.push(typeof l==='function'?l(f[k]):l||k)}return o}
+function activeFaults(){const o=[],add=(obj,def,name,s)=>{const d=faultDesc(obj.fault,def);if(d.length)o.push({name,d,sel:s,obj,def})};
+ for(const n of M.nodes)add(n,FDEF[KIND(n)],n.name,{t:'n',id:n.id});
+ for(const e of M.edges){const a=nodeById(e.from),b=nodeById(e.to);if(a&&b)add(e,EFDEF,a.name+' → '+b.name,{t:'e',id:e.id})}
+ for(const g of M.groups){add(g,GFDEF,g.name,{t:'g',id:g.id});
+  for(const c of g.clusters){add(c,CFDEF,g.name+' / '+c.name,{t:'g',id:g.id});
+   for(const s of c.sgs){add(s,SFDEF,g.name+' / '+s.name,{t:'g',id:g.id,sg:s.id});for(const r of s.regions)add(r,RFDEF,g.name+' / '+s.name+' / '+r.name,{t:'g',id:g.id,sg:s.id})}}}
+ return o}
+function clearFault(x){for(const k in x.def)if(FLBL[k]!==null)x.obj.fault[k]=x.def[k];sim.syncFaults();refreshStatic();updGroups();save();markOnce('healed '+x.name);if(sel)renderInsp();updStatus()}
+/* select something and bring it into view if it is off screen */
+function focusSel(s){let p=null;if(s.sg)openActs.add(s.sg);
+ if(s.t==='n'){const n=nodeById(s.id);if(n)p={x:n.x+NW/2,y:n.y+NH/2}}else if(s.t==='e'){if(GEO[s.id])p=bez(GEO[s.id],0.5)}else{const g=groupById(s.id);if(g)p={x:g.x+g.w/2,y:g.y+g.h/2}}
+ if(p){const W=svg.clientWidth,H=svg.clientHeight,sx=p.x*vp.k+vp.x,sy=p.y*vp.k+vp.y;if(sx<60||sx>W-60||sy<40||sy>H-40){vp.x=W/2-p.x*vp.k;vp.y=H/2-p.y*vp.k;applyVp()}}
+ if(L.noR){L.noR=false;applyLayout(true)}select(s)}
+/* the verdict is judged from symptoms (what clients saw in the last 3 s), never from the faults themselves */
+function verdictNow(){const A=sim.A;let ok=0,er=0,an=0;for(const x of sim.G.hist.slice(-6)){ok+=x.ok;er+=x.err;an+=x.an}
+ const tot=ok+er,sr=tot>0?ok/tot:null,infl=A.created-A.done;let v;
+ if(!sim.t)v=['idle','○','Not started','press Run to start traffic'];
+ else if(sr==null&&infl<=0&&!an)v=['idle','○','No traffic','no client has finished a request in the last 3 s'];
+ else if(sr!=null&&sr<0.5)v=['bad','✕','Failing',pct(1-sr)+' of client requests fail'];
+ else if((sr!=null&&sr<0.98)||an>0)v=['warn','▲','Degraded',sr!=null&&sr<0.98?pct(1-sr)+' of client requests fail':'requests are breaking invariants'];
+ else if(XP&&XP.phase==='recover'&&!XP.noFault)v=['info','↻','Recovering','clients are fine again'];
+ else v=['ok','✓','Healthy','clients see no errors'];
+ if(XP&&XP.phase==='fault')v[3]+=' · '+cut(XP.name,44)+(XP.healAt>sim.t?' heals in '+Math.ceil((XP.healAt-sim.t)/1000)+' s':'');
+ else if(XP&&XP.phase==='recover'&&!XP.noFault)v[3]+=' · healed '+secs(sim.t-XP.s1.t)+' ago, waiting for the backlog to drain';
+ return v}
+function updStatus(){if(!sim)return;curFaults=activeFaults();xpTick();
+ const G=sim.G,A=sim.A,hh=G.hist,last=hh[hh.length-1]||{},v=verdictNow(),b=$('#stV'),vs=v.join('|')+running;
+ if(sig.sv!==vs){sig.sv=vs;b.className='verdict '+v[0];b.children[0].textContent=v[1];b.children[1].textContent=v[2];b.children[2].textContent=v[3]+(running||!sim.t?'':' · paused')}
+ let ok=0,er=0;for(const x of hh.slice(-6)){ok+=x.ok;er+=x.err}const d=G.ok+G.err,now=ok+er>0?ok/(ok+er):null;
+ $('#stSucc').textContent=now==null?'–':pct(now);$('#stSucc').parentNode.className='sk'+(now!=null&&now<0.98?' bad':'');$('#stSuccL').textContent='Client success'+(d?' · '+pct(G.ok/d)+' overall':'');
+ $('#stP99').textContent=ms(last.p99);$('#stInfl').textContent=(A.created-A.done).toLocaleString();
+ $('#stAnom').textContent=A.anom.toLocaleString()+(A.done&&A.anom?' ('+pct(A.anom/A.done)+')':'');$('#stAn').className='sk'+(A.anom?' bad':'');
+ const fs=curFaults.map(x=>x.name+':'+x.d.join()).join('|');
+ if(sig.sf!==fs){sig.sf=fs;const box=$('#stF');box.innerHTML='';const n=curFaults.length;$('#bHeal').classList.toggle('hot',n>0);
+  if(!n)box.append(h('span',{class:'muted'},'No faults injected'));
+  else{box.append(h('span',{class:'flab'},'⚡ '+n+' fault'+(n>1?'s':'')+' active'));
+   curFaults.slice(0,4).forEach(x=>box.append(h('span',{class:'fchip'},h('button',{class:'fx1',title:x.name+': '+x.d.join(', ')+' — click to select it',onclick:()=>focusSel(x.sel)},h('b',null,cut(x.name,28)),' '+cut(x.d.join(', '),32)),
+    h('button',{class:'fx2',title:'Clear the faults on '+x.name,'aria-label':'Clear the faults on '+x.name,onclick:()=>clearFault(x)},'✕'))));
+   if(n>4)box.append(h('span',{class:'muted'},'+'+(n-4)+' more'))}}}
+
+/* ---------- experiment report: before, during and after a fault ---------- */
+/* An experiment starts when a scenario is applied or the first fault is injected, moves to "recovering" when the last fault is cleared,
+   and is "recovered" once clients are back at their baseline and the backlog has drained for 3 s. */
+function xpSnap(){const A=sim.A,o={t:sim.t,ok:sim.G.ok,fail:sim.G.err,anom:A.anom};for(const c of ACOLS)o[c[0]]=A[c[0]]|0;return o}
+function xpStart(name,auto,noFault,healS){let ok=0,er=0,p=null,inf=0;for(const x of sim.G.hist.slice(-20)){ok+=x.ok;er+=x.err;if(x.p99!=null&&!(p>x.p99))p=x.p99;if(x.infl>inf)inf=x.infl}
+ XP={name,auto,phase:'fault',s0:xpSnap(),s1:null,base:{sr:ok+er>0?ok/(ok+er):null,p99:p,infl:inf},pk99:0,pkInfl:0,okN:0,g0:0,rec:null,had:false,healAt:healS>0?sim.t+healS*1000:0,lt:-1,noFault:!!noFault};
+ if(noFault){XP.s1=XP.s0;XP.phase='recover'}sig.xp=''}
+function xpHeal(){if(!XP||XP.phase!=='fault')return;XP.phase='recover';XP.s1=xpSnap();XP.okN=0;XP.healAt=0;sig.xp=''}
+function xpTick(){const nf=curFaults.length;
+ if(nf){const nm=nf===1?curFaults[0].name+' — '+curFaults[0].d.join(', '):nf+' faults at once';
+  if(!XP||XP.phase==='done'||(XP.phase==='recover'&&XP.noFault))xpStart(nm,true);
+  else if(XP.phase==='recover'){XP.phase='fault';XP.s1=null;sig.xp=''}
+  if(XP.auto)XP.name=nm;XP.had=true}
+ else if(XP&&XP.phase==='fault'&&XP.had)xpHeal();
+ if(!XP||XP.phase==='done')return;const hh=sim.G.hist,last=hh[hh.length-1];if(!last||last.t===XP.lt)return;XP.lt=last.t;
+ if(last.p99>XP.pk99)XP.pk99=last.p99;if(last.infl>XP.pkInfl)XP.pkInfl=last.infl;
+ if(XP.phase==='recover'){const tot=last.ok+last.err,sr=tot>0?last.ok/tot:null,b=XP.base;
+  const good=(sr==null||sr>=Math.min(0.99,(b.sr==null?1:b.sr)-0.01))&&last.infl<=Math.max(b.infl*1.5,b.infl+5)&&!last.an&&last.t-XP.s1.t>=(XP.noFault?4000:0);
+  if(good){if(!XP.okN++)XP.g0=last.t}else XP.okN=0;
+  if(XP.okN>=6){XP.phase='done';XP.rec=Math.max(0,XP.g0-XP.s1.t);sig.xp=''}}}
+function xpHtml(){const A=sim.A,last=sim.G.hist[sim.G.hist.length-1]||{},kv=(a,b)=>'<span>'+a+'</span><b>'+b+'</b>';
+ const tail='<h3>Right now</h3><div class="kv">'+kv('Requests completed',A.done.toLocaleString())+kv('Throughput ok / failed',f1(last.ok||0)+' / '+f1(last.err||0)+' per s')+kv('Latency p50 / p99',ms(last.p50)+' / '+ms(last.p99))+'</div>';let o='<h3>Experiment report</h3>';
+ if(!XP)return o+'<p class="muted" style="font-size:12px;margin:0">Nothing has been broken yet. Apply a failure scenario, or select a component and inject a fault. This report then compares before, during and after, and counts the damage that healing did not undo.</p>'+tail;
+ const now=xpSnap(),s0=XP.s0,s1=XP.s1,nf=XP.noFault,d1=nf?now:(s1||now),b=XP.base;
+ const sr=(a,z)=>{const k=z.ok-a.ok,f=z.fail-a.fail;return k+f>0?pct(k/(k+f)):'–'},td=x=>'<td>'+x+'</td>';
+ const ph=XP.phase==='fault'?'<span class="chip w">▲ fault active for '+secs(now.t-s0.t)+'</span>':XP.phase==='recover'?'<span class="chip">↻ '+(nf?'settling':'healed, recovering')+' for '+secs(now.t-s1.t)+'</span>':'<span class="chip g">✓ '+(nf?'settled':'recovered')+' in '+secs(XP.rec)+'</span>';
+ const aft=!nf&&s1;
+ o+='<div class="xp"><h4><span>'+esc(XP.name)+'</span>'+ph+'</h4><table><tr><th></th><th>before</th><th>'+(nf?'since':'during fault')+'</th>'+(nf?'':'<th>after heal</th>')+'</tr>'+
+  '<tr><td>Client success</td>'+td(b.sr==null?'–':pct(b.sr))+td(sr(s0,d1))+(nf?'':td(aft?sr(s1,now):'–'))+'</tr>'+
+  '<tr><td>Failed requests</td>'+td('–')+'<td class="'+(d1.fail-s0.fail?'b':'z')+'">'+(d1.fail-s0.fail)+'</td>'+(nf?'':aft?'<td class="'+(now.fail-s1.fail?'w':'z')+'">'+(now.fail-s1.fail)+'</td>':td('–'))+'</tr>'+
+  '<tr><td>Latency p99</td>'+td(ms(b.p99))+td('peak '+ms(XP.pk99||null))+(nf?'':td(aft?'now '+ms(last.p99):'–'))+'</tr>'+
+  '<tr><td>Backlog (in flight)</td>'+td(b.infl)+td('peak '+XP.pkInfl)+(nf?'':td(aft?'now '+(A.created-A.done):'–'))+'</tr></table>';
+ const dm=ACOLS.map(c=>[c,now[c[0]]-s0[c[0]]]).filter(x=>x[1]>0);
+ return o+'<p class="dm">'+(dm.length?'<b>Consistency anomalies since it began</b> (healing does not undo these): '+dm.map(x=>'<span class="chip '+(x[0][3]==='b'?'r':'w')+'" title="'+esc(x[0][2])+'">'+x[1]+' '+x[0][1]+'</span>').join(' ')+' <button class="sm" data-audit>Open the audit</button>':'No invariant broken since it began: every settled request was either fully applied or failed cleanly.')+'</p></div>'+tail}
+
+/* ---------- from a number to the requests behind it ---------- */
+/* the request selected in the audit (or being followed after ▶1) has its path outlined on the canvas */
+let trSig='';
+function applyTrace(force){const tr=selTrace||(follow&&follow.tr)||null,s=tr?tr.id+':'+tr.ev.length:'';if(!force&&s===trSig)return;trSig=s;const on=new Set();
+ if(tr){on.add(String(tr.src).split('@')[0]);for(const e of tr.ev)if(e[2]!=null)on.add(String(e[2]).split('@')[0])}
+ for(const id in nodeEls)nodeEls[id].g.classList.toggle('ontr',on.has(id));
+ for(const e of M.edges){const el=edgeEls[e.id];if(el)el.g.classList.toggle('ontr',on.has(e.from)&&on.has(e.to))}}
+function auPick(ev){const c=ev.target.closest('[data-f]');if(!c)return;auF={f:c.dataset.f,src:c.dataset.src};selTrace=null;sig.au='';updDock()}
+function auVerdict(){const A=sim.A,cl=A.clean+A.cleanFail+A.rejected;
+ return'<p class="verd">'+(A.done?'<b>'+pct(cl/A.done)+'</b> of '+A.done.toLocaleString()+' settled requests kept every invariant.'+(A.anom?' <b class="x">'+A.anom.toLocaleString()+'</b> did not: '+ACOLS.filter(c=>A[c[0]]).map(c=>A[c[0]]+' '+c[1]).join(', ')+'. Click an underlined number to see those requests.':' Nothing was lost, duplicated or left half done.'):'No request has settled yet.')+'</p>'}
+function initStatus(){$('#stV').onclick=()=>$('#tab-dash').click();$('#stAn').onclick=()=>$('#tab-audit').click();
+ document.addEventListener('click',ev=>{const m=$('#fileMenu');if(m.open&&(!m.contains(ev.target)||ev.target.closest('.mlist button')))m.open=false})}
+function initLegend(){const lg=$('#legend'),b=$('#bLegend'),set=v=>{lg.hidden=!v;b.classList.toggle('on',v);LS.set('faultline.legend',v)},c=(col,t)=>'<i style="color:'+col+'">'+t+'</i>';
+ lg.innerHTML='<h4>Component status</h4><div>'+c('#3fb950','●')+'<span>Healthy: taking traffic, under 2% errors</span></div><div>'+c('#d29922','▲')+'<span>Degraded: over 2% errors, hanging, or filling up</span></div><div>'+c('#f85149','■')+'<span>Down, restarting, or over half its requests fail</span></div><div>'+c('#8391a3','○')+'<span>Idle: no traffic</span></div><div>'+c('#d29922','⚡')+'<span>A fault is injected here</span></div>'+
+  '<h4>On each component</h4><div><i>34/s</i><span>Requests arriving per second, then the share that fail, then p99 (the slowest 1%)</span></div><div>'+c('#4c9aff','▬')+'<span>Bar along the bottom: how full it is (workers, queue, lag). Amber over half, red near the limit</span></div>'+
+  '<h4>Connections</h4><div>'+c('#8391a3','──')+'<span>A call that waits for the answer</span></div><div>'+c('#8391a3','╌╌')+'<span>Asynchronous: a subscription or a polling loop</span></div><div>'+c('#d29922','──')+'<span>Over 2% failing, or a fault injected (⚡)</span></div><div>'+c('#f85149','──')+'<span>Over 30% failing</span></div><div>'+c('#a371f7','──')+'<span>Path of the request selected in the audit</span></div>'+
+  '<h4>Dots (Messages view)</h4><div>'+c('#6cb6ff','●')+'<span>Request</span></div><div>'+c('#3fb950','●')+'<span>Successful reply</span></div><div>'+c('#f85149','●')+'<span>Error reply</span></div><div>'+c('#f85149','✕')+'<span>Lost on the network</span></div>'+
+  '<h4>Zoom</h4><div><i>−/+</i><span>Zoomed out, components show only their name and status. Zoom in, or select something, for rates and connection settings.</span></div>';
+ b.onclick=()=>set(lg.hidden);set(LS.get('faultline.legend',false))}
+
 /* ---------- run loop ---------- */
 function setRun(v,keep){if(!keep&&follow){follow=null;sim.manual=manual}running=v;$('#bRun').textContent=v?'⏸ Pause':'▶ Run';document.body.classList.toggle('running',v)}
-function resetSim(){healTok++;follow=null;oneTr=null;sim=new Sim(M,{vis:onVis});sim.manual=manual;parts=[];visT={};selTrace=null;sig={}}
-function refresh(){if(running&&sim.t>4000)gmark('run');$('#clock').textContent='t = '+(sim.t/1000).toFixed(follow?2:1)+' s'+(follow?' · following #'+follow.tr.id:'');$('#lag').style.display=sim.lagging?'block':'none';updNodes();updEdges();updGroups();updDock();liveInsp()}
+function resetSim(){healTok++;follow=null;oneTr=null;sim=new Sim(M,{vis:onVis});sim.manual=manual;parts=[];visT={};selTrace=null;XP=null;auF=null;sig={}}
+function refresh(){if(running&&sim.t>4000)gmark('run');$('#clock').textContent='t = '+(sim.t/1000).toFixed(follow?2:1)+' s'+(follow?' · following #'+follow.tr.id:'');$('#lag').style.display=sim.lagging?'block':'none';updStatus();updNodes();updEdges();updGroups();updDock();liveInsp();applyTrace()}
 let lastF=performance.now(),acc=0;
 function frame(now){const dt=Math.min(100,now-lastF);lastF=now;if(running)sim.advance(dt*(follow?Math.min(speed,0.1):speed));
  if(follow&&(follow.tr.final||sim.t>follow.until)){const tr=follow.tr;setRun(false);refresh();toast(tr.final?'Request #'+tr.id+' settled after '+ms(tr.tEnd-tr.t0)+' — paused. Its hops are listed under "Last single message".':'Request #'+tr.id+' is still in motion after 60 s — paused.')}
@@ -2337,6 +2520,8 @@ function showHelp(){showModal(h('h2',null,'How Faultline works',h('button',{oncl
 <li><b>Tables and polling loops.</b> Select a database and add <b>tables</b> (inbox, outbox, de-dupe, data). Each table is a row under the node and its own connection point: drop a service's connection on a row to write to that table, and drag the <b>●</b> on a work table to a <b>Polling loop</b> that reads it in batches. The dashed line from the table carries the poll interval, batch size, ordering and how rows are marked done. A de-dupe table makes a repeated message a unique-key hit that the consumer skips.</li>
 <li><b>Applications.</b> Add an <b>Application</b> box and drop services into it. It is deployed as <b>clusters</b> (shards by key; the tabs on the box) → <b>server groups</b> (builds; the sections under the title, always 100% of a cluster's traffic between them) → <b>regions</b> (instances per data centre). Select the box to edit the hierarchy, lose a region or a cluster, kill an instance, ship a bad build, or run a <b>canary</b>, <b>blue/green</b>, <b>highlander</b> or <b>A/B</b> cut-over between two server groups. Mark a server group "A/B: own consumer group" to have two builds read the same topic.</li>
 <li><b>Recover.</b> <b>✚ Heal all</b> clears faults and returns server groups to their baseline traffic split. Watch how long the backlog takes to drain, and what was permanently lost.</li>
+<li><b>Status strip.</b> The bar under the toolbar always says what clients experience right now (healthy, degraded, failing, recovering), lists every active fault (click one to jump to it, ✕ to clear just that one) and holds <b>✚ Heal all</b>. Every status is a shape as well as a colour: ● healthy, ▲ degraded, ■ down, ○ idle. <b>Legend</b>, bottom right of the canvas, explains the rest.</li>
+<li><b>Experiment report.</b> As soon as a fault is active, the Dashboard compares before, during and after: client success, failed requests, peak latency and backlog, how long recovery took, and the anomalies that healing did not undo. The fault window is shaded on the charts. In the audit, click an underlined number to list the requests behind it; the selected request's path is outlined on the canvas.</li>
 <li><b>Guided and All options.</b> The switch in the top bar. <b>Guided</b> shows the settings most systems need, a short component list and a getting-started checklist; anything you have changed stays visible, and "more settings" unfolds the rest. <b>All options</b> shows everything. The <b>?</b> next to a setting opens its explanation.</li>
 <li><b>Layout.</b> Drag the bars between the panels to resize them, double-click a bar to reset it, and use the arrow on a bar to hide or show a side panel. The sizes are remembered.</li>
 <li><b>Keys.</b> <kbd>Space</kbd> run / pause · <kbd>Del</kbd> delete selection · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo a deletion · <kbd>F</kbd> fit to view · <kbd>Esc</kbd> deselect · scroll to zoom · drag the background to pan.</li>`}),
@@ -2360,7 +2545,7 @@ $('#file').onchange=ev=>{const f=ev.target.files[0];if(!f)return;const rd=new Fi
 window.addEventListener('resize',()=>applyLayout());
 
 if(guided==null)guided=!LS.get('faultline.current',null);
-gutter('#gL','wl','noL');gutter('#gR','wr','noR');gutter('#gD','hd','min');buildTabs();applyLayout();setMode(guided);
+gutter('#gL','wl','noL');gutter('#gR','wr','noR');gutter('#gD','hd','min');buildTabs();applyLayout();setMode(guided);initStatus();initLegend();
 {const cur=LS.get('faultline.current',null);if(cur&&Array.isArray(cur.nodes)&&cur.nodes.length){try{loadModel(cur)}catch(e){loadModel(EXAMPLES[0].build())}}else{loadModel(EXAMPLES[0].build());showLibrary()}}
 requestAnimationFrame(frame);
 </script>
