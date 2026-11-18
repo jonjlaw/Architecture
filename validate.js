@@ -73,12 +73,11 @@ for(const n of nodes.values()){if(E.KIND(n)!=='service')continue;const what='nod
   if(a.if)predOk(a.if,what+' action '+a.id+' if');numOk(a.times,what+' action '+a.id+' times');numOk(a.delayMs,what+' action '+a.id+' delayMs');
   if(a.when&&!['always','fallback','error'].includes(a.when))err(what+': action '+a.id+' when must be always, fallback or error');
   if(a.check&&!(dk==='store'&&a.op==='read'))warn(what+': action '+a.id+' has check:true, which only applies to a read of a database');
-  if(a.txEnd&&!a.tx&&!a.outbox)warn(what+': action '+a.id+' has txEnd:true but is not part of a transaction (tx or outbox)');
+  if(a.txEnd&&!a.tx)warn(what+': action '+a.id+' has txEnd:true but is not part of a transaction (tx:true)');
   if(a.delayMs&&!(dk==='queue'||(dk==='store'&&(E.tableOf(d,e.cfg.table)||{}).kind==='queue')))warn(what+': action '+a.id+' has delayMs, which only applies to a write to a work table or a publish to a queue');
   if(a.guard&&dk!=='store')warn(what+': action '+a.id+' has guard:true but '+d.name+' is not a database');
   if(a.tx&&dk!=='store')warn(what+': action '+a.id+' has tx:true but '+d.name+' is not a database');
-  if(a.outbox&&!['log','queue','pubsub'].includes(dk))warn(what+': action '+a.id+' has outbox:true but '+d.name+' is not a topic or queue');
-  if(a.outbox&&![...edges.values()].some(x=>x.from===n.id&&E.KIND(nodes.get(x.to))==='store'))err(what+': action '+a.id+' uses the outbox, but this node writes to no database')}
+  }
  for(const e of edges.values())if(e.to===n.id&&e.cfg.poll&&e.cfg.poll.mark==='tx'&&!((n.cfg&&n.cfg.actions)||[]).some(a=>a.tx&&edges.get(a.edge)&&edges.get(a.edge).to===e.from))warn(what+': edge '+e.id+' marks rows in the handler\'s transaction (poll.mark "tx"), but no action of this node writes '+nm(e.from)+' with tx:true, so rows are marked one by one instead');
  for(const e of edges.values())if(e.from===n.id&&!used.has(e.id))err(what+': edge '+e.id+' → '+nm(e.to)+' has no action in cfg.actions, so it would never be called');
  if(n.type==='poller'&&![...edges.values()].some(e=>e.to===n.id&&E.KIND(nodes.get(e.from))==='store'))warn(what+': a polling loop with no table connected to it never runs')}

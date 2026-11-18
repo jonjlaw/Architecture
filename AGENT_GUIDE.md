@@ -62,8 +62,8 @@ Work through these in order. Each step ends when its criterion holds.
 | Two tables written in one transaction | two edges to the same database, one per table, both actions `tx: true` |
 | Unique-key / processed-message check | a `dedupe` table, written with `tx: true` if it shares the work's transaction |
 | `UPDATE … WHERE version < :v`, conditional put, compare-and-set | `guard: true` on the write action |
-| Outbox table read by a separate process | `queue` table + `poller` + the poller's publish action |
-| Outbox handled by a library inside the service | publish action with `outbox: true` (the service must also write a database) |
+| Transactional outbox, whether a separate relay process or a library inside the service | `queue` table written with `tx: true` alongside the data + a `poller` (the relay) + the poller's publish action. Give the relay edge `poll.onExhaust: "block"` when it retries for ever |
+| Inbox: store the message, acknowledge, process later | a `worker` that writes a `dedupe` table and a `queue` table with `tx: true` + a `poller` that does the work, with `poll.mark: "tx"` when the row is marked in the work's transaction |
 | Read-through cache | service → `cache` edge (action `op: "read"`), plus `cache` → database edge |
 | Several statements against one table | several actions on the same edge, each with a `name` |
 | `SELECT` "already processed?" then `INSERT` (no unique key) | a read action with `check: true`, then the write, both on the edge to that table |
@@ -255,11 +255,7 @@ A source sends each request to every node it is connected to.
 
 - Capacity: `concurrency` 8, `procMs` 20, `queueCap` 100 (rejects when full), `rateLimit` 0 (off), `restartMs` 3000.
 - Behaviour: `respond` `after`|`ack`, `idempotent` false, `badData` `reject`|`crash`|`ignore` (also applies to a contract version the node does not understand), `contract` `""`, `actions` [].
-- Built-in outbox relay, used by actions with `outbox: true`: `outboxMode` `poll`|`cdc`, `outboxPollMs` 100, `outboxBatch` 50, `outboxSend` `seq`|`parallel`, `outboxMark` `each`|`batch`, `outboxTimeout` 500.
-- Built-in inbox: `inbox` false, `inboxPollMs` 200, `inboxBatch` 20, `inboxMax` 5, `inboxCap` 10000.
 - Type defaults differ: `worker` concurrency 4; `poller` concurrency 4, procMs 5; `fn` concurrency 100, procMs 40, queueCap 10.
-
-Use explicit tables and a `poller` when the code has a separate relay or inbox processor; use the built-in options when a library does it inside the service.
 
 **store:** `latency` 5, `maxConc` 20 (connection pool), `queueCap` 200, `idempotent` false (upsert / unique key), `supportsTx` true, `replicaLag` 0, `tables` []. `nosql`, `blob` and `search` default to `supportsTx` false and `idempotent` true.
 
@@ -325,7 +321,6 @@ Tables (`cfg.tables`) are `{id, name, kind, also}`:
 | `op` | `write` | `read` has no side effects and is ignored by the audit |
 | `tx` | false | Database write committed only if the whole handler succeeds. All `tx` actions of a handler on one database commit together after the last action |
 | `guard` | false | Database write only: refused unless newer than the stored row (a version check). Late and repeated updates change nothing |
-| `outbox` | false | Publish through the service's built-in transactional outbox |
 | `onError` | `abort` | `abort` returns an error and leaves earlier non-transactional effects in place; `continue` ignores the failure; `compensate` undoes earlier actions |
 | `when` | `always` | `fallback` runs only if the previous action failed. `error` runs only after the handler has failed and rolled back (a catch block): if every `error` action succeeds, a message consumer acknowledges the message and the request is parked; if one fails, the original failure stands and the message is retried, unless that action has `onError: "continue"`, which swallows it and loses the message. A waiting caller always still gets the error |
 | `as` | `""` | The message or call this action sends has this type (`Name` or `Name@version`) instead of the type being handled |

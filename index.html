@@ -348,8 +348,7 @@ const TYPES={
 };
 const KDEF={
  producer:{rateMin:5,rateMax:10,pattern:'steady',period:20,spacing:'poisson',op:'write',keys:20,keyspace:'',types:'',fields:'',badPct:0,dupPct:0,timeout:2000,retries:0,backoff:200,mode:'rate',everyS:15,release:'200',spreadMs:0,perInstance:false,region:''},
- service:{concurrency:8,procMs:20,queueCap:100,respond:'after',idempotent:false,badData:'reject',contract:'',rateLimit:0,restartMs:3000,
-  outboxMode:'poll',outboxPollMs:100,outboxBatch:50,outboxSend:'seq',outboxMark:'each',outboxTimeout:500,inbox:false,inboxPollMs:200,inboxBatch:20,inboxMax:5,inboxCap:10000,actions:[]},
+ service:{concurrency:8,procMs:20,queueCap:100,respond:'after',idempotent:false,badData:'reject',contract:'',rateLimit:0,restartMs:3000,actions:[]},
  store:{latency:5,maxConc:20,queueCap:200,idempotent:false,supportsTx:true,replicaLag:0,region:'',tables:[]},
  external:{latency:150,maxConc:100,queueCap:100,rateLimit:0,idempotent:false,region:''},
  cache:{latency:1,ttlMs:10000,capacity:1000,onWrite:'update',writeThrough:false,timeout:1000,region:''},
@@ -393,7 +392,7 @@ function tyParse(s){s=String(s||'');let v=_tc.get(s);if(v)return v;const mix=[],
  v={mix,set,max,tot};if(_tc.size>500)_tc.clear();_tc.set(s,v);return v}
 /* newest version of a type that a contract accepts: undefined = the contract says nothing about it, null = any version */
 function tyMax(list,ty){const p=tyParse(list);return p.max.has(ty||'')?p.max.get(ty||''):p.max.has('*')?p.max.get('*'):undefined}
-const ACTD={name:'',op:'write',tx:false,txEnd:false,outbox:false,onError:'abort',when:'always',await:true,timeout:1000,retries:0,backoff:100,breaker:false,failPct:0,if:'',as:'',set:'',times:'',delayMs:'',check:false,guard:false};
+const ACTD={name:'',op:'write',tx:false,txEnd:false,onError:'abort',when:'always',await:true,timeout:1000,retries:0,backoff:100,breaker:false,failPct:0,if:'',as:'',set:'',times:'',delayMs:'',check:false,guard:false};
 /* message content. A source's "fields" give each message named values: "status=PAID:70|PENDING:30, amount=1-500, tenant=a|b|c".
    A predicate ("if") tests them: "status=PAID & amount>100", "tenant=a|b", "!priority", "$type=OrderCreated". An action's "set" rewrites them on what it sends: "status=SHIPPED, sourceId=$id". */
 const _fc=new Map(),_pc=new Map();
@@ -559,7 +558,7 @@ class Sim{
  lat(r,v){if(r.lat.length<300)r.lat.push(v)}
  rt(n){let r=this.rts.get(n.id);if(r)return r;const k=KIND(n);
   r={n,c:{in:0,ok:0,err:0},snap:[],rate:{in:0,ok:0,err:0},lat:[],p50:0,p99:0,hist:[],busy:0,q:new Dq(),tok:null,tokT:0,rr:0};
-  if(k==='service')Object.assign(r,{epoch:0,downUntil:0,rb:{},inflight:new Set(),outbox:new Dq(),relaying:false,obT:false,obEp:0,inbox:new Dq(),ibFly:0,ibT:false,brk:{},lastSeq:new Map(),once:0,actOnce:{},wasDown:false});
+  if(k==='service')Object.assign(r,{epoch:0,downUntil:0,rb:{},inflight:new Set(),brk:{},lastSeq:new Map(),once:0,actOnce:{},wasDown:false});
   else if(k==='log'){r.parts=[];for(let i=0;i<Math.max(1,n.cfg.partitions|0);i++)r.parts.push({log:[],base:0,h:0});r.groups=new Map();r.ks={}}
   else if(k==='queue'){r.ready=new Dq();r.infl=0;r.win={};r.ks={}}
   else if(k==='cache')r.map=new Map();
@@ -636,11 +635,8 @@ class Sim{
   for(const r of rs){for(const key in r.c)v.c[key]=(v.c[key]|0)+r.c[key];v.rate.in+=r.rate.in;v.rate.ok+=r.rate.ok;v.rate.err+=r.rate.err;
    if(r.p50>v.p50)v.p50=r.p50;if(r.p99>v.p99)v.p99=r.p99;v.busy+=r.busy;v.q.length+=r.q.length;if(r.downUntil<v.downUntil)v.downUntil=r.downUntil;
    for(let i=0,o=hl-r.hist.length;i<r.hist.length;i++){const a=v.hist[o+i],b=r.hist[i];a[0]+=b[0];a[1]+=b[1];a[2]+=b[2]}
-   if(k==='service'){ob+=r.outbox.length;ib+=r.inbox.length;fly+=r.ibFly;const a=r.outbox.peek(),b=r.inbox.peek();if(a&&(!oh||a.t<oh.t))oh=a;if(b&&(!ih||b.t<ih.t))ih=b;
-    if(r.obLast!=null&&!(v.obLast>r.obLast)){v.obLast=r.obLast;v.obLastN=r.obLastN}if(r.ibLastN)v.ibLastN=r.ibLastN}
    if(r.map)keys+=r.map.size;if(r.hl)for(const id in r.hl)if(r.hl[id].until>this.t)v.hl[id]=r.hl[id]}
   if(!(v.downUntil<Infinity))v.downUntil=0;
-  if(k==='service'){v.outbox={length:ob,peek:()=>oh};v.inbox={length:ib,peek:()=>ih};v.ibFly=fly}
   if(k==='cache')v.map={size:keys};return v}
  syncGroups2(){for(const i of this.ix().sgl){const g=i.s,cf=i.g.cfg,gr=this.grt(g),N=this.gN(g),k=this.gDead(g);
    if(k>gr.inst){const frac=(k-gr.inst)/Math.max(1,N-gr.inst);if(k<N)for(const n of this.members(g,'service'))this.crashPart(n,frac);
@@ -803,7 +799,7 @@ class Sim{
    /* a de-dupe row that already exists is a unique-key violation: the whole transaction rolls back and the consumer skips the message */
    for(let i=0;i<ks.length;i++){const t=tableOf(n,tbs[i]);if(t&&t.kind==='dedupe'&&tr.dd&&tr.dd[n.id+'|'+t.id+'|'+ks[i]])return this.ddHit(n,r,tr)}
    for(let i=0;i<ks.length;i++){const x=msg.ms&&msg.ms[i];this.put(n,r,x?Object.assign({},msg,{ty:x.ty,ver:x.ver,vc:x.vc,f:x.f,ix:x.ix,dl:x.dl,hk:x.hk}):msg,ks[i],tableOf(n,tbs[i]))}
-   if(msg.ob){const s=this.node(msg.svc);if(s)for(const o of msg.ob)this.obPush(s,o,n.id)}return{ok:true}}
+   return{ok:true}}
   return this.put(n,r,msg,key,T)}
 
  /* ---------- database tables: connection points on a store. A work table (inbox / outbox) holds rows until a polling loop reads them ---------- */
@@ -852,6 +848,7 @@ class Sim{
   const one=(i,cb)=>{const row=rows[i],tr=row.tr;let done=false;
    const fin=x=>{if(done)return;done=true;
     if(x.ok)res[i]=1;
+    else if(txm&&x.cm&&x.post)res[i]=1;/* everything, including the mark, had committed before the handler threw: the row is done */
     else if(txm&&x.cm){res[i]=3;this.lose(tr,'its row was marked done by a transaction that committed before a later step failed, so it is never retried',e.to)}
     else if(x.retry===false)res[i]=3;
     else{const free=x.err==='down'||x.err==='overload'||x.err==='throttled';if(!free)row.n++;
@@ -878,39 +875,12 @@ class Sim{
    if(pr&&pr.block){r.c.iso=(r.c.iso|0)+1;this.tlog(msg.tr,'siteblock',n.id);return reply.abandon?reply.abandon():undefined}
    if(pr&&pr.down){r.c.err++;r.c.noreg=(r.c.noreg|0)+1;return this.at(1,()=>reply({ok:false,err:'down',retry:true}))}
    if(pr&&pr.x){r.c.xreg=(r.c.xreg|0)+1;this.tlog(msg.tr,'xregion',n.id,pr.rg)}}
-  if(cfg.inbox)return this.inboxRecv(n,r,msg,reply,e);
   if(r.q.length>=cfg.queueCap&&(r.busy>=this.workers(n)||(pr&&pr.rg!=null&&(r.rb[pr.rg]|0)>=this.rWorkers(n,pr.rg)))){r.c.err++;r.c.rej=(r.c.rej|0)+1;return this.at(1,()=>reply({ok:false,err:'overload',retry:true}))}
   const job={msg,reply,e,t0:this.t,acked:false};if(pr){job.rg=pr.rg;if(pr.x)job.xr=+this.m.xRegionMs||0}
   if(cfg.respond==='ack'){msg.tr.pending++;job.acked=true;reply({ok:true,accepted:true})}
   r.q.push(job);this.pump(n,r)}
  workers(n){const cl=n.tid?null:this.ix().cl.get(n.id);if(cl){let t=0;for(const c of cl)t+=this.workers(c);return t}
   const g=n.group&&this.rep(n),inst=g?Math.max(1,this.gLive(g)):1;return Math.max(1,Math.round(n.cfg.concurrency*inst*(n.fault.capacityPct==null?100:n.fault.capacityPct)/100))}
- /* ---------- inbox: store the message durably, acknowledge, process later in polled batches ---------- */
- inboxDb(n){for(const e of this.outs(n.id)){const d=this.node(e.to);if(d&&KIND(d)==='store')return d}return null}
- inboxRecv(n,r,msg,reply,e){const tr=msg.tr,cfg=n.cfg,id=TID(n)+'|'+this.ek(msg,e),db=this.inboxDb(n);
-  if(db&&this.off(db)){r.c.err++;return this.at(1,()=>reply({ok:false,err:'down',retry:true}))}
-  const ib=tr.ib||(tr.ib={});
-  if(ib[id]){this.A.dedup++;r.c.dedup=(r.c.dedup|0)+1;this.tlog(tr,'dedup',n.id);return this.at(1,()=>reply({ok:true,dedup:true}))}
-  if(r.inbox.length+r.ibFly>=(cfg.inboxCap||1e9)){r.c.err++;r.c.rej=(r.c.rej|0)+1;return this.at(1,()=>reply({ok:false,err:'overload',retry:true}))}
-  ib[id]=1;tr.pending++;r.inbox.push({msg,e,n:0,t:this.t});r.c.ibIn=(r.c.ibIn|0)+1;this.tlog(tr,'inbox',n.id);
-  this.at(db?this.jit(db.cfg.latency,0.3)*this.lm(db):1,()=>reply({ok:true,accepted:true}));this.ibKick(n,r)}
- ibKick(n,r){if(r.ibT)return;const poll=Math.max(10,n.cfg.inboxPollMs||200);r.ibT=true;this.at(poll-(this.t%poll),()=>{r.ibT=false;this.ibPoll(n,r)})}
- ibPoll(n,r){if(!r.inbox.length)return;const cfg=n.cfg;
-  if(this.isUp(n)){const B=Math.max(1,cfg.inboxBatch|0),keys=r.ibKeys||(r.ibKeys=new Map()),held=[];let took=0;
-   /* rows for a key that is already being processed stay in the table, so one key is never handled out of order */
-   while(r.ibFly<B&&r.inbox.length&&held.length<B*4){const row=r.inbox.shift(),kk=row.msg.key;if(keys.get(kk)){held.push(row);continue}
-    keys.set(kk,1);r.ibFly++;took++;let fin=false;
-    const done=res=>{if(fin)return;fin=true;r.ibFly--;keys.delete(kk);const tr=row.msg.tr;
-     if(res&&res.ok){r.c.ibDone=(r.c.ibDone|0)+1;tr.pending--;return this.check(tr)}
-     if(res&&(res.retry===false||++row.n>=(cfg.inboxMax||5))){if(res.err!=='bad'){tr.parked=1;this.fl(tr,'parked',n.id);r.c.ibPark=(r.c.ibPark|0)+1;this.tlog(tr,'ibpark',n.id)}tr.pending--;return this.check(tr)}
-     if(res){r.c.ibRetry=(r.c.ibRetry|0)+1;this.tlog(tr,'ibretry',n.id,res.cause||res.err)}
-     r.inbox.unshift(row);this.ibKick(n,r)};
-    const reply=res=>done(res);reply.abandon=()=>done(null);
-    r.q.push({msg:row.msg,reply,e:row.e,t0:this.t,acked:false,ib:true})}
-   for(let i=held.length-1;i>=0;i--)r.inbox.unshift(held[i]);
-   if(took){r.c.ibPolls=(r.c.ibPolls|0)+1;r.ibLast=this.t;r.ibLastN=took}
-   this.pump(n,r)}
-  if(r.inbox.length)this.ibKick(n,r)}
  pump(n,r){if(r.downUntil>this.t||this.off(n))return;const max=this.workers(n);
   while(r.busy<max&&r.q.length){let job=r.q.shift();const ep=r.epoch;
    /* a request routed to a region runs on that region's instances only: when they are all busy it waits, even if another region is idle */
@@ -924,9 +894,7 @@ class Sim{
  crash(n,hold){const r=this.rt(n);r.epoch++;r.c.crash=(r.c.crash|0)+1;const jobs=[...r.q,...r.inflight];r.q=new Dq();r.inflight.clear();r.busy=0;r.rb={};
   for(const j of jobs){const tr=j.msg.tr;if(j.acked){this.lose(tr,'accepted work lost in crash',n.id);tr.pending--;this.check(tr)}else j.reply.abandon()}
   if(hold){r.downUntil=0;if(jobs.length||!n.group)this.log('crash',n.name+' is DOWN ('+jobs.length+' in-flight requests lost)')}
-  else{const ms=n.cfg.restartMs||3000;r.downUntil=this.t+ms;this.at(ms+1,()=>{this.log('ok',n.name+' restarted');this.pump(n,r)});this.log('crash',n.name+' crashed ('+jobs.length+' in-flight requests lost) — restarting in '+ms+' ms')}
-  /* the outbox relay runs inside the service: publishes that were in flight are not marked as sent and go out again */
-  r.obEp++;r.relaying=false;this.obPurge(r);if(r.outbox.length)this.obKick(n,r,true)}
+  else{const ms=n.cfg.restartMs||3000;r.downUntil=this.t+ms;this.at(ms+1,()=>{this.log('ok',n.name+' restarted');this.pump(n,r)});this.log('crash',n.name+' crashed ('+jobs.length+' in-flight requests lost) — restarting in '+ms+' ms')}}
  handle(n,r,job,ep){let msg=job.msg;const tr=msg.tr,cfg=n.cfg,nid=TID(n),ix=msg.ix||'',key=this.ek(msg,job.e),sgx=this.rep(n),ev=sgx&&sgx.cfg?sgx.cfg.emitVer|0:0,dead=()=>r.epoch!==ep||job.dead;
   const end=res=>this.jobEnd(n,r,job,res);
   tr.sv[nid]=msg.ty||'';
@@ -939,8 +907,6 @@ class Sim{
     msg=Object.assign({},msg,{bad:true})}}
   if(msg.bad){if(cfg.badData==='reject'){tr.rejected=1;this.tlog(tr,'reject',n.id);return end({ok:false,err:'bad',retry:false})}
    if(cfg.badData==='crash'){this.tlog(tr,'poison',n.id);return end({ok:false,err:'poison',retry:true})}}
-  /* inbox + DB transaction: the row is marked processed in the same commit as the writes, so a re-run after a late failure is a no-op */
-  if(job.ib&&tr.ibd&&tr.ibd[nid+'|'+key]){this.A.dedup++;r.c.dedup=(r.c.dedup|0)+1;this.tlog(tr,'dedup',n.id);return end({ok:true,dedup:true})}
   if(cfg.idempotent&&tr.fx[key]>0){this.A.dedup++;r.c.dedup=(r.c.dedup|0)+1;this.tlog(tr,'dedup',n.id);return end({ok:true,dedup:true})}
   if(msg.ord){const k2=job.e.id+'|'+msg.key,l=r.lastSeq.get(k2);if(l!==undefined&&l>msg.seq){r.c.ooo=(r.c.ooo|0)+1;this.tlog(tr,'ooo',n.id);
    /* handling out of order only does harm if something it writes can be overwritten: a handler whose every write is version-checked is safe */
@@ -956,7 +922,7 @@ class Sim{
   (tr.need||(tr.need={}))[nid+ix]=need;
   const N=plan.length;let failAt=-1;
   if(r.once>0||this.chance(this.er(n))){if(r.once>0)r.once--;failAt=Math.floor(this.rand()*(N+2))}
-  const ctx={i:0,tx:[],ob:[],done:[],deg:false,pf:false,dd:false,cm:false,inErr:false};
+  const ctx={i:0,tx:[],done:[],deg:false,pf:false,dd:false,cm:false,inErr:false};
   const mk=(a,sfx)=>{const m={tr,key:msg.key,seq:msg.seq,bad:msg.bad,ty:msg.ty,ver:msg.ver,f:msg.f,ix:ix+sfx,hk:nid+ix,rg:job.rg||msg.rg,act:nid+':'+a.id+ix+sfx,op:a.op||'write',ord:msg.ord,os:msg.ord?(msg.os||TID(job.e)):undefined};
    if(a.as){const t=tyParse(a.as).mix[0];if(t){m.ty=t.ty;m.ver=t.ver}}
    if(ev>0)m.ver=ev;
@@ -998,21 +964,17 @@ class Sim{
    if(r.actOnce[a.id]||this.chance(a.failPct)){r.actOnce[a.id]=0;return onRes(a,e,m,{ok:false,err:'error',retry:true})}
    const o={timeout:a.timeout,retries:a.retries,backoff:a.backoff,brk:a.breaker?(r.brk[a.id]||(r.brk[a.id]={f:0,until:0,name:n.name+' → '+dst.name})):null};
    if(a.await===false){this.call(e,m,o,res=>{if(!res.ok)this.lose(tr,'fire-and-forget call failed',e.to)});ctx.pf=false;return step()}
-   if(a.outbox&&MSGK[dk]&&m.op!=='read'){ctx.ob.push({eid:e.id,m});ctx.pf=false;return a.txEnd?flush(step):step()}
    if(a.tx&&dk==='store'&&dst.cfg.supportsTx&&m.op==='write')m.op='prepare';
    this.call(e,m,o,res=>{if(dead())return;onRes(a,e,m,res)})};
   /* commit what the open transaction holds. Normally once, after the last action; an action marked "transaction ends here" commits early, so later steps run after it and cannot roll it back */
-  const flush=cb=>{if(!ctx.tx.length&&!ctx.ob.length)return cb();
+  const flush=cb=>{if(!ctx.tx.length)return cb();
    const groups=new Map();for(const x of ctx.tx){let g=groups.get(x.e.to);if(!g)groups.set(x.e.to,g={e:x.e,keys:[],tbs:[],ms:[]});g.keys.push(x.k);g.tbs.push(x.e.cfg.table||'');g.ms.push(x.m)}
-   let gl=[...groups.values()];const ob=ctx.ob.length?ctx.ob:null;ctx.tx=[];ctx.ob=[];
-   if(ob&&!gl.length){const se=this.outs(n.id).find(x=>KIND(this.node(x.to))==='store');
-    if(!se){for(const o of ob)this.obPush(n,o,null);return cb()}gl=[{e:se,keys:[],tbs:[],ms:[]}]}
+   const gl=[...groups.values()];ctx.tx=[];
    let gi=0;const next=()=>{if(dead())return;if(gi>=gl.length)return cb();const g=gl[gi++];
-    const cm={tr,key:msg.key,seq:msg.seq,bad:msg.bad,ty:msg.ty,ver:msg.ver,f:msg.f,ix:msg.ix,rg:job.rg||msg.rg,op:'commit',keys:g.keys,tbs:g.tbs,ms:g.ms,act:null,ob:gi===1?ob:null,svc:n.id,ord:msg.ord,os:msg.ord?(msg.os||TID(job.e)):undefined};
+    const cm={tr,key:msg.key,seq:msg.seq,bad:msg.bad,ty:msg.ty,ver:msg.ver,f:msg.f,ix:msg.ix,rg:job.rg||msg.rg,op:'commit',keys:g.keys,tbs:g.tbs,ms:g.ms,act:null,ord:msg.ord,os:msg.ord?(msg.os||TID(job.e)):undefined};
     this.call(g.e,cm,{timeout:1000,retries:0,backoff:0},res=>{if(dead())return;if(!res.ok){this.tlog(tr,'rollback',g.e.to,res.err);return fail({ok:false,err:'error',retry:true,cause:res.err})}if(res.dup)return skip();ctx.cm=true;next()})};
    next()};
-  const commit=()=>flush(()=>{if(job.ib&&ctx.cm)(tr.ibd||(tr.ibd={}))[nid+'|'+key]=1;
-   if(failAt===N+1)return fail({ok:false,err:'error',retry:true});
+  const commit=()=>flush(()=>{if(failAt===N+1)return fail({ok:false,err:'error',retry:true,post:true});
    if(ctx.deg)tr.deg=1;
    if(msg.op!=='read'){const p=tr.fx[key]|0;tr.fx[key]=p+1;if(p>0&&!acts.some(a=>a.op!=='read')){tr.dupK=key;this.fl(tr,'duplicate',n.id);this.tlog(tr,'duphandle',n.id)}}
    this.tlog(tr,'done',n.id);end({ok:true,deg:ctx.deg})});
@@ -1022,27 +984,6 @@ class Sim{
   if(job.acked){if(!res.ok&&res.err!=='bad')this.lose(tr,'failed after the caller was told 202 Accepted',n.id);tr.pending--;this.check(tr)}
   else job.reply(res);
   this.pump(n,r)}
- /* ---------- outbox: rows commit with the data; a relay polls them in batches (or tails the DB log) and publishes ---------- */
- obPush(s,o,db){const sr=this.rt(s);o.db=db;o.t=this.t;o.sent=false;o.m.tr.pending++;sr.outbox.push(o);this.tlog(o.m.tr,'outbox',s.id);this.obKick(s,sr,false)}
- obKick(s,r,retry){if(r.obT||r.relaying)return;const c=s.cfg,poll=Math.max(10,c.outboxPollMs||100);
-  const d=c.outboxMode==='cdc'?(retry?Math.max(50,poll):2+this.rand()*8):poll-(this.t%poll);
-  r.obT=true;this.at(d,()=>{r.obT=false;this.relay(s,r)})}
- obPurge(r){let any=false;for(const o of r.outbox)if(o.sent){any=true;break}if(!any)return;const keep=[];
-  for(const o of r.outbox){if(o.sent){const tr=o.m.tr;tr.pending--;this.check(tr)}else keep.push(o)}
-  r.outbox.clear();for(const o of keep)r.outbox.push(o)}
- relay(s,r){if(r.relaying||!r.outbox.length)return;const head=r.outbox.peek(),db=head.db&&this.node(head.db);
-  if(!this.isUp(s)||(db&&this.off(db)))return this.obKick(s,r,true);
-  const c=s.cfg,B=c.outboxMode==='cdc'?200:Math.max(1,c.outboxBatch|0),rows=[];
-  for(const o of r.outbox){rows.push(o);if(rows.length>=B)break}
-  r.relaying=true;r.c.polls=(r.c.polls|0)+1;r.obLast=this.t;r.obLastN=rows.length;
-  const ep=r.obEp,each=c.outboxMark!=='batch';let left=rows.length,failed=false;
-  const finish=()=>{if(r.obEp!==ep)return;if(!each&&!failed)for(const o of rows)o.sent=true;
-   this.obPurge(r);r.relaying=false;if(failed)r.c.relayRetry=(r.c.relayRetry|0)+1;if(r.outbox.length)this.obKick(s,r,failed)};
-  const pub=(o,cb)=>{const e=this.edge(o.eid);if(!e){this.lose(o.m.tr,'outbox target was removed',s.id);o.sent=true;return cb(true)}
-   this.call(e,o.m,{timeout:c.outboxTimeout||500,retries:0,backoff:0},res=>{if(r.obEp!==ep)return;if(res.ok){r.c.obPub=(r.c.obPub|0)+1;if(each)o.sent=true}cb(res.ok)})};
-  if(c.outboxSend==='parallel')for(const o of rows)pub(o,ok=>{if(!ok)failed=true;if(--left===0)finish()});
-  else{let i=0;const next=()=>{if(i>=rows.length)return finish();pub(rows[i++],ok=>{if(!ok){failed=true;return finish()}next()})};next()}}
-
  /* ---------- log (Kafka-style) ---------- */
  logWork(n,r,msg,e){const key=this.ek(msg,e),tr=msg.tr;
   if(!this.effect(n,r,msg,key))return{ok:true};
@@ -1235,7 +1176,7 @@ class Sim{
    if(!pe.length){for(const x of [...tb.rows,...tb.later]){x.tr.pending--;this.check(x.tr)}tb.rows.clear();tb.later=[]}else for(const e of pe)this.tbKick(n,r,tb,e)}}}
  forget(n){for(const x of this.reps(n))this.forget1(x)}
  forget1(n){const r=this.rts.get(n.id);if(!r)return;const k=KIND(n);
-  if(k==='service'){this.crash(n,true);for(const o of r.outbox){o.m.tr.pending--;this.check(o.m.tr)}r.outbox.clear();for(const x of r.inbox){x.msg.tr.pending--;this.check(x.msg.tr)}r.inbox.clear()}
+  if(k==='service')this.crash(n,true);
   else if(k==='queue'){for(const x of r.ready)if(!x.held){x.tr.pending--;this.check(x.tr)}r.ready.clear()}
   else if(k==='log'){for(const g of r.groups.values())this.dropGroup(r,g);r.groups.clear()}
   else if(k==='store'&&r.tb)for(const tid in r.tb){const tb=r.tb[tid];for(const x of [...tb.rows,...tb.later]){x.tr.pending--;this.check(x.tr)}tb.rows.clear();tb.later=[]}}
@@ -1294,17 +1235,19 @@ Watch the Consistency audit tab, one row per flow:
 • A shows "partial" (order saved, event never sent) and "ghost" (client saw an error but the order exists).
 • B stays atomic and keeps accepting orders during a broker outage, then catches up.
 
-The price of B: delivery is at-least-once. Apply "Broker acks lost" and B produces duplicate events. Fix it by turning on "Idempotent consumer" on fulfilment-B.`,B=>{
+The price of B: delivery is at-least-once. Apply "Broker acks lost" and B produces duplicate events. Fix it by turning on "Idempotent consumer" on fulfilment-B.
+
+The outbox is drawn as it is built: an "outbox" table in orders-db-B, written in the same transaction as the order, and relay-B, a polling loop that reads the table and publishes.`,B=>{
  B.note('A · Dual write — save the order, then publish the event',250,4);
  const ca=B.n('client','shoppers-A',20,70,{rateMin:15,rateMax:25,timeout:1500});
  const a=B.n('service','orders-A',260,70);
  const adb=B.n('sql','orders-db-A',520,26),at=B.n('kafka','order-events-A',520,126),ac=B.n('worker','fulfilment-A',790,126);
  B.e(ca,a);B.e(a,adb);const ea=B.e(a,at);B.e(at,ac);
- B.note('B · Outbox — order row + event row commit together; a relay publishes later',250,254);
+ B.note('B · Outbox — order row + event row commit together; a relay publishes later',250,234);
  const cb=B.n('client','shoppers-B',20,320,{rateMin:15,rateMax:25,timeout:1500});
  const b=B.n('service','orders-B',260,320);
- const bdb=B.n('sql','orders-db-B',520,276),bt=B.n('kafka','order-events-B',520,376),bc=B.n('worker','fulfilment-B',790,376);
- B.e(cb,b);B.e(b,bdb,{act:{tx:true}});const eb=B.e(b,bt,{act:{outbox:true}});B.e(bt,bc);
+ const bdb=B.n('sql','orders-db-B',520,300),bo=B.t(bdb,'orders','data'),bx=B.t(bdb,'outbox','queue'),br=B.n('poller','relay-B',790,320),bt=B.n('kafka','order-events-B',1060,320),bc=B.n('worker','fulfilment-B',1330,320);
+ B.e(cb,b);B.e(b,bdb,{cfg:{table:bo},act:{tx:true}});B.e(b,bdb,{cfg:{table:bx},act:{tx:true}});B.e(bdb,br,{cfg:{table:bx},poll:{everyMs:100,batch:50,send:'seq',onExhaust:'block',backoff:200}});const eb=B.e(br,bt,{act:{timeout:500}});B.e(bt,bc);
  B.sc('Kafka outage (20 s)','Both topics go down, then heal. A rejects orders but has already saved them. B keeps taking orders and the relay drains the outbox on recovery.',{[at]:{down:true},[bt]:{down:true}},{heal:20});
  B.sc('Service fails mid-request (10%)','Each service throws at a random point in its handler. A leaves half-finished work; B rolls back.',{[a]:{errorRate:10},[b]:{errorRate:10}});
  B.sc('Broker acks lost (25%)','The publish succeeds but the acknowledgement never arrives. A reports failure for an event that was sent. B republishes: duplicates downstream.',{[ea]:{respDrop:25},[eb]:{respDrop:25}});
@@ -1329,10 +1272,10 @@ The price of B: the client gets "OK" before payment has happened. Failures surfa
  B.note('B · Event-driven — commit, publish, reply; workers do the rest',250,334);
  const cb=B.n('client','shoppers-B',20,470,{rateMin:10,rateMax:20,timeout:2500});
  const b=B.n('service','checkout-async',250,470,{concurrency:16});
- const ob=B.n('sql','orders-db-B',490,376),t=B.n('kafka','order-placed',490,486);
- const wp=B.n('worker','payment-worker',740,376,{idempotent:true}),ws=B.n('worker','stock-worker',740,486),wm=B.n('worker','email-worker',740,596);
- const pb=B.n('payment','payment-api-B',1000,376),sb=B.n('sql','stock-db-B',1000,486),mb=B.n('email','email-api-B',1000,596);
- B.e(cb,b);B.e(b,ob,{act:{tx:true}});B.e(b,t,{act:{outbox:true}});
+ const ob=B.n('sql','orders-db-B',490,450),obo=B.t(ob,'orders','data'),obx=B.t(ob,'outbox','queue'),rl=B.n('poller','outbox-relay',740,470),t=B.n('kafka','order-placed',990,470);
+ const wp=B.n('worker','payment-worker',1240,360,{idempotent:true}),ws=B.n('worker','stock-worker',1240,470),wm=B.n('worker','email-worker',1240,580);
+ const pb=B.n('payment','payment-api-B',1500,360),sb=B.n('sql','stock-db-B',1500,470),mb=B.n('email','email-api-B',1500,580);
+ B.e(cb,b);B.e(b,ob,{cfg:{table:obo},act:{tx:true}});B.e(b,ob,{cfg:{table:obx},act:{tx:true}});B.e(ob,rl,{cfg:{table:obx},poll:{everyMs:100,batch:50,send:'seq',onExhaust:'block',backoff:200}});B.e(rl,t,{act:{timeout:500}});
  B.e(t,wp,{sub:{onExhaust:'block',backoff:1000}});B.e(t,ws);B.e(t,wm,{sub:{maxAttempts:5,backoff:1000}});
  B.e(wp,pb,{act:{timeout:1500}});B.e(ws,sb);B.e(wm,mb,{act:{timeout:3000}});
  B.sc('Email provider slow ×15 (25 s)','Email takes ~1.8 s. In A every checkout waits for it, workers pile up and requests time out after payment was already taken. In B only the email lag grows.',{[ma]:{latencyMult:15},[mb]:{latencyMult:15}},{heal:25});
@@ -1559,7 +1502,7 @@ The price of B: retention is finite. Set the topic's retention to 100 and repeat
 });
 
 ex('Outbox relay: polling, batching and CDC','Messaging','One outbox drained three ways: a slow poll with big batches, a fast poll with per-row marking, and log tailing.',
-`All three services write the order and an outbox row in one transaction. They differ only in how the relay gets rows out of the table (select a service → "Outbox relay").
+`All three services write the order and an outbox row in one transaction. They differ only in how the relay gets rows out of the outbox table (select the dashed connection from the table to a relay).
 
 A polls every 2 s, up to 60 rows, and marks the whole batch as sent in one update. Cheap on the database — but events leave in bursts, wait up to 2 s, top out at 30 msg/s, and one failed publish re-sends the entire batch.
 
@@ -1567,22 +1510,22 @@ B polls every 100 ms, up to 50 rows, and marks each row as it is acknowledged.
 
 C tails the database log (CDC): rows are published within milliseconds, with extra infrastructure to run.
 
-Watch the edge labels (⟳ interval × batch), each service's "outbox N" counter and the Live metrics "Oldest outbox row".
+Watch the labels on the table → relay connections (⟳ interval × batch), the waiting-row count on each outbox table, and "Oldest waiting row" in the Live metrics of that connection.
 
 • "Broker acks lost (1%)": a tiny failure rate, amplified by batch size. Compare the duplicate column for A and B.
 • "Traffic ×3": A's relay can only publish 30 msg/s, so its outbox grows and events fall minutes behind; it drains slowly after the surge.
 • Try it yourself: hold sources (✋), then press ▶ 1 on a source and read the hops under "Last single message".`,B=>{
- const lane=(L,y,title,cfg)=>{B.note(L+' · '+title,250,y-66);
-  const c=B.n('client','shoppers-'+L,20,y,{rateMin:15,rateMax:25,timeout:1500}),s=B.n('service','orders-'+L,260,y,cfg);
-  const db=B.n('sql','orders-db-'+L,530,y-46),t=B.n('kafka','order-events-'+L,530,y+54),w=B.n('worker','fulfilment-'+L,810,y+54);
-  B.e(c,s);B.e(s,db,{act:{tx:true}});const pe=B.e(s,t,{act:{outbox:true}});B.e(t,w);return{c,s,t,pe}};
- const a=lane('A',70,'Poll every 2 s, 60 rows, mark the batch once',{outboxPollMs:2000,outboxBatch:60,outboxMark:'batch'});
- const b=lane('B',320,'Poll every 100 ms, 50 rows, mark each row',{outboxPollMs:100,outboxBatch:50,outboxMark:'each'});
- const c=lane('C',570,'CDC — tail the database log',{outboxMode:'cdc'});
+ const lane=(L,y,title,poll)=>{B.note(L+' · '+title,250,y-66);
+  const c=B.n('client','shoppers-'+L,20,y,{rateMin:15,rateMax:25,timeout:1500}),s=B.n('service','orders-'+L,260,y);
+  const db=B.n('sql','orders-db-'+L,530,y-20),to=B.t(db,'orders','data'),tx=B.t(db,'outbox','queue'),r=B.n('poller','relay-'+L,810,y),t=B.n('kafka','order-events-'+L,1080,y),w=B.n('worker','fulfilment-'+L,1350,y);
+  B.e(c,s);B.e(s,db,{cfg:{table:to},act:{tx:true}});B.e(s,db,{cfg:{table:tx},act:{tx:true}});B.e(db,r,{cfg:{table:tx},poll:Object.assign({send:'seq',onExhaust:'block',backoff:200},poll)});const pe=B.e(r,t,{act:{timeout:500}});B.e(t,w);return{c,s:r,t,pe}};
+ const a=lane('A',70,'Poll every 2 s, 60 rows, mark the batch once',{everyMs:2000,batch:60,mark:'batch'});
+ const b=lane('B',320,'Poll every 100 ms, 50 rows, mark each row',{everyMs:100,batch:50,mark:'each'});
+ const c=lane('C',570,'CDC — tail the database log',{mode:'cdc',lagMs:5,batch:200});
  B.sc('Broker acks lost (1%)','One publish in a hundred is acknowledged too late. A re-sends whole batches; B and C re-send single events.',{[a.pe]:{respDrop:1},[b.pe]:{respDrop:1},[c.pe]:{respDrop:1}});
  B.sc('Traffic ×3 (20 s)','A surge the services can handle. Can each relay?',{[a.c]:{surge:3},[b.c]:{surge:3},[c.c]:{surge:3}},{heal:20});
  B.sc('Kafka outage (15 s)','Orders keep being accepted. Compare how quickly each outbox drains afterwards.',{[a.t]:{down:true},[b.t]:{down:true},[c.t]:{down:true}},{heal:15});
- B.sc('Services crash mid-batch','The relay runs inside the service. Publishes in flight were not marked as sent yet.',{},{triggers:[{node:a.s,what:'crash'},{node:b.s,what:'crash'},{node:c.s,what:'crash'}]});
+ B.sc('Relays crash mid-batch','Publishes in flight were not marked as sent yet, so they go out again after the restart.',{},{triggers:[{node:a.s,what:'crash'},{node:b.s,what:'crash'},{node:c.s,what:'crash'}]});
 });
 
 ex('Inbox: handle inline vs. store first','Messaging','A consumer that processes each message while the broker waits, against one that stores it in an inbox table and works through it in batches.',
@@ -1590,18 +1533,21 @@ ex('Inbox: handle inline vs. store first','Messaging','A consumer that processes
 
 A handles each message inline. The broker waits for the handler; a failure after the commit, a duplicate delivery or a redelivery applies the write again.
 
-B has an inbox (select ledger-B → "Inbox"). A message is stored and acknowledged at once; the row's "processed" flag commits together with the ledger write, so a re-run is a no-op and a message the inbox has already seen is ignored. A poller takes 20 rows every 200 ms.
+B has an inbox, drawn as it is built. inbox-B stores each message in an "inbox" table and acknowledges at once; a unique "received" id makes a message it has already stored a no-op. ledger-B is a polling loop that takes 20 rows every 200 ms and marks each row done in the same transaction as the ledger write, so a re-run changes nothing.
 
 What it costs: every message waits for the next poll, throughput is capped at batch ÷ interval (100 msg/s here), and there is one more table to run.
 
 • "Duplicate deliveries (30%)": A's ledger gets double entries; B suppresses them.
 • "Handler fails 20%": A duplicates whenever the failure lands after the commit. B retries from the inbox.
-• "Traffic ×6": A keeps up. B's poller cannot — watch "inbox N" grow on ledger-B, then drain.`,B=>{
+• "Traffic ×6": A keeps up. B's poller cannot — watch the waiting rows on the inbox table of ledger-db-B grow, then drain.`,B=>{
  const lane=(L,y,title,cfg)=>{B.note(L+' · '+title,250,y-52);
   const s=B.n('source','payments-'+L,20,y,{rateMin:15,rateMax:25}),t=B.n('kafka','payments-topic-'+L,260,y,{partitions:8}),w=B.n('worker','ledger-'+L,540,y,Object.assign({concurrency:8},cfg)),db=B.n('sql','ledger-db-'+L,810,y);
   B.e(s,t);const se=B.e(t,w);B.e(w,db,{act:{tx:true}});return{s,w,se}};
  const a=lane('A',70,'Inline — the broker waits for the handler',{});
- const b=lane('B',260,'Inbox — store, acknowledge, then poll 20 rows every 200 ms',{inbox:true,inboxPollMs:200,inboxBatch:20});
+ B.note('B · Inbox — store, acknowledge, then poll 20 rows every 200 ms',250,208);
+ const b=(()=>{const y=280,s=B.n('source','payments-B',20,y,{rateMin:15,rateMax:25}),t=B.n('kafka','payments-topic-B',260,y,{partitions:8}),rc=B.n('worker','inbox-B',540,y,{concurrency:8,procMs:3}),db=B.n('sql','ledger-db-B',810,y-30);
+  const tr=B.t(db,'received','dedupe'),ti=B.t(db,'inbox','queue'),tl=B.t(db,'ledger','data'),w=B.n('poller','ledger-B',1090,y,{concurrency:8});
+  B.e(s,t);const se=B.e(t,rc);B.e(rc,db,{cfg:{table:tr},act:{tx:true}});B.e(rc,db,{cfg:{table:ti},act:{tx:true}});B.e(db,w,{cfg:{table:ti},poll:{everyMs:200,batch:20,send:'keyed',mark:'tx',backoff:200}});B.e(w,db,{cfg:{table:tl},act:{tx:true}});return{s,w,se}})();
  B.sc('Duplicate deliveries (30%)','The network delivers some messages twice.',{[a.se]:{dup:30},[b.se]:{dup:30}});
  B.sc('Handler fails 20%','The handler throws at a random point — sometimes after its transaction has committed.',{[a.w]:{errorRate:20},[b.w]:{errorRate:20}});
  B.sc('Traffic ×6 (15 s)','More than the inbox poller can drain.',{[a.s]:{surge:6},[b.s]:{surge:6}},{heal:15});
@@ -1900,13 +1846,6 @@ const EFF=[['partition','Network partition (black hole)','bool',null,'Every pack
 const SUBF=[['ack','Acknowledge','sel',{after:'After processing (at-least-once)',before:'Before processing (at-most-once)'}],['maxAttempts','Max attempts','num',P(1,100,1)],['backoff','Retry backoff (ms)','num',P(0,60000,50)],
  ['onExhaust','When attempts run out','sel',{dlq:'Move to dead-letter queue',skip:'Drop the message',block:'Retry forever (blocks)'}],['timeout','Processing timeout (ms)','num',P(100,600000,100),'If the consumer has not finished in time the broker redelivers.'],['prefetch','Max in flight (queues)','num',P(1,1000,1)]];
 const GRPF=['group','Consumer group id','txt',{ph:'(own group)'},'Subscriptions on this topic with the same id form ONE consumer group: they share offsets and split the partitions, so each message is handled by only one of them. Different ids each receive every message.'];
-const OBF=[['outboxMode','Relay finds new rows by','sel',{poll:'Polling the outbox table',cdc:'Tailing the DB log (CDC)'},'Polling is simple, but adds up to one interval of delay and caps throughput at batch ÷ interval. Change-data-capture publishes within milliseconds and needs extra infrastructure.'],
- ['outboxPollMs','Poll interval (ms)','num',P(10,60000,10)],['outboxBatch','Rows per poll (batch size)','num',P(1,5000,1)],
- ['outboxTimeout','Publish timeout (ms)','num',P(10,60000,10),'How long the relay waits for the broker to acknowledge one publish before treating it as failed.'],
- ['outboxSend','Publish a batch','sel',{seq:'One at a time, in order',parallel:'All at once (faster, unordered)'},'In order: one failure stops the batch so nothing overtakes. All at once: higher throughput, but messages for the same key can swap places.'],
- ['outboxMark','Mark rows as sent','sel',{each:'After each publish',batch:'Once per batch'},'Once per batch costs one DB write instead of many, but if any publish in the batch fails, or the service crashes, the whole batch is published again: more duplicates downstream.']];
-const IBF=[['inbox','Use an inbox table','bool',null,'Incoming messages are stored durably and acknowledged straight away. A poller then processes them in batches, retries failures, and ignores any message it has already stored (de-duplication). Costs: extra delay, a throughput cap, one more table.'],
- ['inboxPollMs','Poll interval (ms)','num',P(10,60000,10)],['inboxBatch','Rows per poll (batch size)','num',P(1,5000,1)],['inboxMax','Attempts before parking a row','num',P(1,100,1)],['inboxCap','Inbox capacity (rows)','num',P(1,10000000,10)]];
 const GF=[['startMs','Start-up time of a server group (ms)','num',P(0,120000,100)],['detectMs','Failure detection time (ms)','num',P(0,60000,100),'After instances die, requests still routed to them fail until health checks notice.'],
  ['sticky','Pin each key to one server group','bool',null,'A/B testing: the same user or order always lands on the same build. Off = every request is split at random according to the traffic shares.']];
 GF.push(['routing','Which region serves a request','sel',{any:'Any region (by instance count)',local:'Same region only',localFirst:'Same region, fail over to another'},'Applies to requests that come from a known region (a source with a region, or a caller running in one). Same region only: if that region has no instances the request fails. Fail over: another region takes it and pays the inter-region latency both ways. A request routed to a region uses only that region\'s instances.'],
@@ -1940,8 +1879,8 @@ let guided=LS.get('faultline.guided',null),inspKey='';
 const moreOpen=new Set(),gs=LS.get('faultline.guide',{});
 const BK={producer:'mode everyS release rateMin rateMax pattern op keys timeout retries',service:'concurrency procMs respond idempotent',store:'latency maxConc idempotent supportsTx',
  external:'latency rateLimit idempotent',cache:'ttlMs capacity onWrite',log:'partitions retention',queue:'capacity fifo',pubsub:'retries timeout',proxy:'strategy rateLimit retryNext',
- act:'op tx outbox onError timeout retries',sub:'ack maxAttempts onExhaust group',poll:'everyMs batch send',nf:'down errorRate latencyMult pause surge',ef:'partition drop respDrop dup',
- sg:'stopped consume',ob:'outboxMode outboxPollMs outboxBatch',ib:'inbox inboxPollMs inboxBatch'};
+ act:'op tx onError timeout retries',sub:'ack maxAttempts onExhaust group',poll:'everyMs batch send',nf:'down errorRate latencyMult pause surge',ef:'partition drop respDrop dup',
+ sg:'stopped consume'};
 const COMMON={client:1,service:1,worker:1,lb:1,kafka:1,queue:1,sql:1,cache:1,ext:1,note:1};
 /* a list of fields. In the guided view, settings outside the basic set are folded away unless they have been changed from their default */
 function flds(obj,list,onch,name,def){const mk=f=>field(obj,f,onch);if(!guided||!BK[name])return list.map(mk);
@@ -2007,13 +1946,14 @@ function tAnchor(n,tid,side){const i=(n.cfg.tables||[]).findIndex(t=>t.id===tid)
 function mkEdge(e){const g=document.createElementNS(SVGNS,'g');g.setAttribute('class','edge');g.dataset.id=e.id;
  g.innerHTML='<path class="hit"><title></title></path><path class="ln" marker-end="url(#arr)"/><text class="el"></text>';edgesG.append(g);
  return edgeEls[e.id]={g,hit:g.children[0],ln:g.children[1],label:g.children[2],tip:g.children[0].firstChild,stat:'',short:'',dur:0}}
-function geom(e){const a=nodeById(e.from),b=nodeById(e.to),ax=a.x+NW/2,ay=a.y+NH/2,bx=b.x+NW/2,by=b.y+NH/2,dx=bx-ax,dy=by-ay;let p0,p3,c1,c2;
- if(e.cfg.table){const into=KIND(b)==='store',st=into?b:KIND(a)==='store'?a:null,o=into?a:b;
-  if(st&&tableOf(st,e.cfg.table)){const s=(o.x+NW/2)>=(st.x+NW/2)?1:-1,T=tAnchor(st,e.cfg.table,s),O={x:o.x+NW/2-s*NW/2,y:o.y+NH/2+(into?7:-7)},d=Math.max(30,Math.abs(O.x-T.x)*0.45),cT={x:T.x+s*d,y:T.y},cO={x:O.x-s*d,y:O.y};
-   return into?[O,cO,cT,T]:[T,cT,cO,O]}}
- if(Math.abs(dx)>=Math.abs(dy)*0.9){const s=dx>=0?1:-1,off=s*7;p0={x:ax+s*NW/2,y:ay+off};p3={x:bx-s*NW/2,y:by+off};const d=Math.max(30,Math.abs(p3.x-p0.x)*0.45);c1={x:p0.x+s*d,y:p0.y};c2={x:p3.x-s*d,y:p3.y}}
- else{const s=dy>=0?1:-1,off=-s*12;p0={x:ax+off,y:ay+s*NH/2};p3={x:bx+off,y:by-s*NH/2};const d=Math.max(26,Math.abs(p3.y-p0.y)*0.45);c1={x:p0.x,y:p0.y+s*d};c2={x:p3.x,y:p3.y-s*d}}
- return[p0,c1,c2,p3]}
+/* every connection leaves from the ● on the right of its source and arrives at the middle of the left side of its target.
+   A table connection uses that table's row instead: its dot on the left when written, its ● on the right when read. */
+function geom(e){const a=nodeById(e.from),b=nodeById(e.to);let p0={x:a.x+NW,y:a.y+NH/2},p3={x:b.x,y:b.y+NH/2};
+ if(e.cfg.table){if(KIND(b)==='store'&&tableOf(b,e.cfg.table))p3=tAnchor(b,e.cfg.table,-1);else if(KIND(a)==='store'&&tableOf(a,e.cfg.table))p0=tAnchor(a,e.cfg.table,1)}
+ const dx=p3.x-p0.x,dy=Math.abs(p3.y-p0.y);
+ /* target to the right: a gentle S. Target behind the source: loop out to the right and come back in from the left, bowing below when the two are level so the line clears the boxes */
+ const d=dx>=0?Math.max(30,dx*0.45):Math.min(240,Math.max(80,-dx*0.3+dy*0.25)),k=dx<0&&dy<100?110-dy*0.6:0;
+ return[p0,{x:p0.x+d,y:p0.y+k},{x:p3.x-d,y:p3.y+k},p3]}
 function bez(p,u){const v=1-u,a=v*v*v,b=3*v*v*u,c=3*v*u*u,d=u*u*u;return{x:a*p[0].x+b*p[1].x+c*p[2].x+d*p[3].x,y:a*p[0].y+b*p[1].y+c*p[2].y+d*p[3].y}}
 function placeEdge(e){const el=edgeEls[e.id];if(!el)return;const p=GEO[e.id]=geom(e),d=`M${p[0].x},${p[0].y} C${p[1].x},${p[1].y} ${p[2].x},${p[2].y} ${p[3].x},${p[3].y}`;
  el.hit.setAttribute('d',d);el.ln.setAttribute('d',d);const m=bez(p,e.cfg.poll?0.3:e.cfg.table?0.78:0.5);el.label.setAttribute('x',m.x);el.label.setAttribute('y',m.y-5)}
@@ -2052,10 +1992,9 @@ function refreshStatic(){for(const n of M.nodes){const el=nodeEls[n.id];if(!el)c
   if(el.note){el.nm.textContent=n.name;continue}
   el.nm.textContent=cut(n.name,zfar?12:19);el.sk='';el.g.setAttribute('aria-label',n.name+', '+TYPES[n.type].label);el.ty.textContent=TYPES[n.type].label;el.g.classList.toggle('faulty',isFaulty(n.fault,FDEF[k]));el.g.classList.toggle('inf',!!n.inferred)}
  for(const e of M.edges){const el=edgeEls[e.id];if(!el)continue;const a=nodeById(e.from),b=nodeById(e.to),ka=KIND(a);let st='';
-  if(ka==='service'){const i=a.cfg.actions.findIndex(x=>x.edge===e.id);if(i>=0){const x=a.cfg.actions[i],ob=x.outbox&&MSGK[KIND(b)],T=tableOf(b,e.cfg.table);st='#'+(i+1)+(T?' → '+T.name:'')+(x.tx?' tx':'')+(ob?' outbox '+(a.cfg.outboxMode==='cdc'?'CDC':'⟳'+a.cfg.outboxPollMs+'ms×'+a.cfg.outboxBatch):'')+(x.when==='fallback'?' fallback':'')+(x.op==='read'?' read':'')}}
+  if(ka==='service'){const i=a.cfg.actions.findIndex(x=>x.edge===e.id);if(i>=0){const x=a.cfg.actions[i],T=tableOf(b,e.cfg.table);st='#'+(i+1)+(T?' → '+T.name:'')+(x.tx?' tx':'')+(x.when==='fallback'?' fallback':'')+(x.op==='read'?' read':'')}}
   else if(e.cfg.poll){const p=e.cfg.poll,T=tableOf(a,e.cfg.table);st=(T?T.name+' ':'')+(p.mode==='cdc'?'CDC ~'+p.lagMs+'ms':'⟳'+p.everyMs+'ms×'+p.batch)+(p.claim==='none'?' no claim':'')}
   else if(e.cfg.sub){if(e.cfg.sub.ack==='before')st='at-most-once';if(ka==='log'&&e.cfg.sub.group)st+=(st?' ':'')+'group:'+e.cfg.sub.group}
-  if(b&&KIND(b)==='service'&&b.cfg.inbox)st+=(st?' ':'')+'→ inbox ⟳'+b.cfg.inboxPollMs+'ms×'+b.cfg.inboxBatch;
   if(ka==='service'){const x=a.cfg.actions.find(x=>x.edge===e.id);if(x){if(x.guard&&KIND(b)==='store')st+=' if-newer';if(x.if)st+=' if '+cut(x.if,24);if(x.times)st+=' ×'+cut(x.times,8);if(x.when==='error')st+=' on error';if(x.delayMs)st+=' after '+cut(x.delayMs,10);if(x.as)st+=' as '+cut(x.as,16)}}
   if(b&&KIND(b)==='log'&&e.cfg.pkey&&e.cfg.pkey!=='entity')st+=(st?' ':'')+(e.cfg.pkey==='none'?'no key':'key:'+cut(e.cfg.pkey.slice(6),12));
   if(e.cfg.if&&b&&KIND(b)==='service')st+=(st?' ':'')+'if '+cut(e.cfg.if,20);
@@ -2169,12 +2108,7 @@ function inspNode(n){const T=TYPES[n.type],k=T.kind;
  if(k==='service'){const pin=M.edges.filter(e=>e.to===n.id&&e.cfg.poll);
   if(pin.length)insp.append(h('div',{class:'btns'},pin.map(e=>{const db=nodeById(e.from),T=tableOf(db,e.cfg.table);return h('button',{class:'sm',onclick:()=>select({t:'e',id:e.id})},'⟳ Polls '+db.name+(T?' · '+T.name:'')+' every '+e.cfg.poll.everyMs+' ms × '+e.cfg.poll.batch+' — edit')})));
   insp.append(sec('Actions — performed in this order',[actionsEditor(n)],true));
-  const hasOb=n.cfg.actions.some(a=>{const e=edgeById(a.edge);return a.outbox&&e&&MSGK[KIND(nodeById(e.to))]}),obS=h('p',{class:'muted',style:'margin:2px 0 6px;font-size:12px'}),ibS=h('p',{class:'muted',style:'margin:2px 0 6px;font-size:12px'});
-  const sums=()=>{const c=n.cfg;obS.textContent=!hasOb?'No action publishes through the outbox yet. Open a "publish →" action above and tick "Via transactional outbox".':c.outboxMode==='cdc'?'Rows are picked up from the database log within a few ms of commit.':'Every '+c.outboxPollMs+' ms the relay reads up to '+c.outboxBatch+' rows and publishes them: at most '+f1(c.outboxBatch/c.outboxPollMs*1000)+' msg/s, and an event waits up to '+ms(c.outboxPollMs)+' before it is even looked at.';
-   ibS.textContent=!c.inbox?'Off: each message is handled while the sender waits.':'Every '+c.inboxPollMs+' ms the poller takes up to '+c.inboxBatch+' stored rows: at most '+f1(c.inboxBatch/c.inboxPollMs*1000)+' msg/s. The sender is acknowledged as soon as the row is stored.'};sums();
-  const och=key=>{onCfg();sums();if(key==='outboxMode'||key==='inbox')renderInsp()};
-  insp.append(sec('Outbox relay — polling and batching',[obS,flds(n.cfg,OBF.filter(f=>n.cfg.outboxMode!=='cdc'||(f[0]!=='outboxPollMs'&&f[0]!=='outboxBatch')),och,'ob',KDEF.service)],hasOb),
-   sec('Inbox — store first, process in batches',[ibS,flds(n.cfg,n.cfg.inbox?IBF:IBF.slice(0,1),och,'ib',KDEF.service)],n.cfg.inbox))}
+}
  const btn=(label,what,title)=>h('button',{class:'sm',title:title||'',onclick:()=>{trigger(n.id,what);if(!running)setRun(true)}},label);
  const bs=[];if(k==='service')bs.push(btn('💥 Crash now','crash','Loses queued and in-flight work, restarts after the restart time'),btn('Fail next request','errOnce','Trigger exactly one handler error'));
  if(k==='log')bs.push(btn('Trigger rebalance','rebalance','In-flight messages are redelivered'));
@@ -2272,10 +2206,9 @@ function actionsEditor(n){const box=h('div'),acts=n.cfg.actions;
   const share=acts.filter(x=>x.edge===a.edge).length>1;
   if(dk==='store'&&a.op==='read')fs.push(['check','"Already processed?" check (skip if found)','bool',null,'Read-before-write de-duplication: if an earlier run of this handler for the same message has already written this table, the handler stops here. Nothing stops two copies that are handled at the same moment: both read "not found" and both write.']);
   if(dk==='store'&&dst.cfg.supportsTx)fs.push(['tx','In DB transaction','bool',null,'The write is only committed if the whole handler succeeds; otherwise it is rolled back. Commit happens after the last action.']);
-  if((dk==='store'&&dst.cfg.supportsTx&&a.tx)||(MSGK[dk]&&a.outbox))fs.push(['txEnd','Transaction commits after this step','bool',null,'The open transaction is committed here instead of after the last action. Steps below run after the commit: if one of them fails, this work stays committed.']);
+  if(dk==='store'&&dst.cfg.supportsTx&&a.tx)fs.push(['txEnd','Transaction commits after this step','bool',null,'The open transaction is committed here instead of after the last action. Steps below run after the commit: if one of them fails, this work stays committed.']);
   if((T&&T.kind==='queue')||dk==='queue')fs.push(['delayMs','Available after (ms)','txt',{ph:'(immediately)'},'The row or message cannot be read before this delay has passed (run_after / visible_at, a delay queue, a scheduled time-out). A number, a range such as 2000-5000, or the name of a numeric message field.']);
   if(dk==='store')fs.push(['guard','Only if newer (version check)','bool',null,'The write carries the version of the update and the database refuses it unless it is newer than what is stored (UPDATE … WHERE version < :v). An older update arriving late, or the same update delivered twice, changes nothing.']);
-  if(MSGK[dk])fs.push(['outbox','Via transactional outbox','bool',null,'The message is written to an outbox table inside the DB transaction and published afterwards by a relay that retries until it succeeds (at-least-once).']);
   fs.push(['if','Only if','txt',{ph:'$type=OrderCreated & amount>100'},'Branching: the action runs only when every condition holds for the message being handled. $type=OrderCreated|OrderUpdated tests the message type; any other name tests a message field. name=a|b, name!=a, name>10, name (present), !name (absent), joined with &. A message that does not match causes no call at all.'],
    ['times','Repeat once per item','txt',{ph:'(once)'},'Fan-out: the action runs this many times for one message, each a separate effect that is audited on its own. A number, a range such as 0-4, or the name of a numeric field such as items. 0 = not at all.'],
    ['set','Set fields on what it sends','txt',{ph:'status=SHIPPED, sourceId=$id'},'Transformation: the message or call this action sends carries these values. $id is the request id, $key the entity key, $type the message type, or the name of another field with $ in front. name= removes a field.'],
@@ -2285,7 +2218,7 @@ function actionsEditor(n){const box=h('div'),acts=n.cfg.actions;
    ['await','Wait for the response','bool',null,'Off = fire-and-forget: the handler moves on immediately and never learns whether the call worked.'],
    ['timeout','Timeout (ms)','num',P(1,120000,10)],['retries','Retries','num',P(0,20,1)],['backoff','Backoff base (ms)','num',P(0,60000,10),'Exponential with jitter.'],
    ['breaker','Circuit breaker','bool',null,'Opens after 5 consecutive failures and fails fast for 5 s before trying again.'],['failPct','Injected failure rate','rng',P(0,100,1,'%'),'Make just this step fail some of the time.']);
-  const chips=[];if(a.op==='read')chips.push(h('span',{class:'chip'},'read'));if(a.tx&&dk==='store')chips.push(h('span',{class:'chip g'},'tx'));if(a.outbox&&MSGK[dk])chips.push(h('span',{class:'chip g'},'outbox'));if(a.guard&&dk==='store')chips.push(h('span',{class:'chip g'},'if newer'));if(a.if)chips.push(h('span',{class:'chip'},'if '+cut(a.if,24)));if(a.times)chips.push(h('span',{class:'chip'},'×'+cut(a.times,8)));if(a.delayMs)chips.push(h('span',{class:'chip'},'after '+cut(a.delayMs,10)));if(a.when==='error')chips.push(h('span',{class:'chip r'},'on error'));if(a.check&&a.op==='read')chips.push(h('span',{class:'chip g'},'seen?'));if(a.txEnd&&(a.tx||a.outbox))chips.push(h('span',{class:'chip w'},'commit'));if(a.as)chips.push(h('span',{class:'chip'},'as '+cut(a.as,16)));
+  const chips=[];if(a.op==='read')chips.push(h('span',{class:'chip'},'read'));if(a.tx&&dk==='store')chips.push(h('span',{class:'chip g'},'tx'));if(a.guard&&dk==='store')chips.push(h('span',{class:'chip g'},'if newer'));if(a.if)chips.push(h('span',{class:'chip'},'if '+cut(a.if,24)));if(a.times)chips.push(h('span',{class:'chip'},'×'+cut(a.times,8)));if(a.delayMs)chips.push(h('span',{class:'chip'},'after '+cut(a.delayMs,10)));if(a.when==='error')chips.push(h('span',{class:'chip r'},'on error'));if(a.check&&a.op==='read')chips.push(h('span',{class:'chip g'},'seen?'));if(a.txEnd&&a.tx)chips.push(h('span',{class:'chip w'},'commit'));if(a.as)chips.push(h('span',{class:'chip'},'as '+cut(a.as,16)));
   if(a.onError!=='abort')chips.push(h('span',{class:'chip w'},a.onError==='continue'?'best effort':'saga'));if(a.retries>0)chips.push(h('span',{class:'chip'},'retry×'+a.retries));if(a.breaker)chips.push(h('span',{class:'chip g'},'breaker'));if(a.failPct>0)chips.push(h('span',{class:'chip r'},'⚡'+a.failPct+'%'));
   const mv=d=>ev=>{ev.preventDefault();ev.stopPropagation();const j=i+d;if(j<0||j>=acts.length)return;acts.splice(j,0,acts.splice(i,1)[0]);up()};
   const det=h('details',{class:'act',open:openActs.has(a.id)},
@@ -2357,8 +2290,6 @@ function liveInsp(){const box=$('#live');if(!box||!sel)return;let rows=[];
   if(r.cl)r.cl.forEach((x,i)=>rows.push(['   copy in '+x.lbl,sim.off(x)?'not serving':f1(r.rs[i].rate.in)+' in / '+f1(r.rs[i].rate.err)+' err per s']));
   if(k==='store')for(const t of n.cfg.tables||[]){const tb=r.tb&&r.tb[t.id];rows.push(['Table '+t.name,t.kind==='queue'?(tb?tb.rows.length:0)+' waiting · '+(tb?tb.fly:0)+' in progress · '+(tb?tb.done:0)+' done'+(tb&&tb.later.length?' · '+tb.later.length+' not yet eligible':'')+(tb&&tb.park?' · '+tb.park+' parked':''):(tb?tb.n:0)+(t.kind==='dedupe'?' message ids':' rows written')])}
   if(k==='service'){const cap=svcCap(n);rows.push(['Workers busy',r.busy+' / '+sim.workers(n)],['Queued',r.q.length+' / '+n.cfg.queueCap],['Est. capacity',f1(cap)+' req/s']);
-   if(r.outbox.length||c.polls)rows.push(['Outbox rows waiting',r.outbox.length],['Oldest outbox row',r.outbox.length?ms(sim.t-r.outbox.peek().t)+' old':'–'],['Last relay batch',(r.obLastN|0)+' rows'+(r.obLast!=null?', '+ms(sim.t-r.obLast)+' ago':'')]);
-   if(n.cfg.inbox)rows.push(['Inbox rows waiting',r.inbox.length],['Inbox rows in progress',r.ibFly],['Oldest inbox row',r.inbox.length?ms(sim.t-r.inbox.peek().t)+' old':'–'],['Last inbox batch',(r.ibLastN|0)+' rows']);
    if(r.downUntil>sim.t)rows.push(['State','restarting…'])}
   if(k==='store'||k==='external')rows.push(['In progress',r.busy+' / '+n.cfg.maxConc],['Waiting',r.q.length],['Est. capacity',f1(n.cfg.maxConc/Math.max(0.1,n.cfg.latency*(n.fault.latencyMult||1))*1000)+' ops/s']);
   if(k==='log'){const l=sim.lag(r);rows.push(['Consumer lag (max group)',l.lag],['In DLQ',l.dlq],['Consumer groups',r.groups.size])}
@@ -2377,8 +2308,8 @@ function updNodes(){for(const n of M.nodes){const el=nodeEls[n.id];if(!el||el.no
   const er='';
   if(k==='producer'){const held=n.fault.pause?' (paused)':sim.manual?' (held)':'';s1=n.cfg.mode==='schedule'?(held||down?'batch'+(held||' (app down)'):'batch of '+cut(String(n.cfg.release),9)+' in '+(sim.nextFire(n,r)/1000).toFixed(0)+' s'):f1(ra.in)+'/s sent'+held;const d=ra.ok+ra.err;s2=d>0?'ok '+pct(ra.ok/d):n.cfg.mode==='schedule'&&r.lastCount?'last '+r.lastCount:''}
   else if(k==='service'){const w=sim.workers(n);s1='in '+f1(ra.in)+'/s'+er;const crashed=r.downUntil>sim.t;if(crashed)down=true;
-   const ib=r.inbox.length+r.ibFly;s2=crashed?'restarting…':down?'down'+(r.outbox.length?' · outbox '+r.outbox.length:'')+(ib?' · inbox '+ib:''):(n.cfg.inbox?'inbox '+ib+' · busy '+r.busy+'/'+w:'busy '+r.busy+'/'+w+' · queue '+r.q.length)+(r.outbox.length?' · outbox '+r.outbox.length:'');
-   g=Math.max(r.busy/w*0.5,r.q.length/Math.max(1,Math.min(n.cfg.queueCap,1000)),n.cfg.inbox?r.inbox.length/Math.max(1,Math.min(n.cfg.inboxCap,500)):0,r.outbox.length/500)}
+   s2=crashed?'restarting…':down?'down':'busy '+r.busy+'/'+w+' · queue '+r.q.length;
+   g=Math.max(r.busy/w*0.5,r.q.length/Math.max(1,Math.min(n.cfg.queueCap,1000)))}
   else if(k==='store'||k==='external'){s1='in '+f1(ra.in)+'/s'+er;s2='active '+r.busy+'/'+n.cfg.maxConc+' · waiting '+r.q.length;g=Math.max(r.busy/n.cfg.maxConc*0.5,r.q.length/Math.max(1,n.cfg.queueCap));
    if(el.tr)for(const t of n.cfg.tables||[]){const x=el.tr[t.id],tb=r.tb&&r.tb[t.id];if(!x)continue;
     x.textContent=cut(t.name,13)+' · '+(t.kind==='queue'?(tb?tb.rows.length+tb.fly:0)+' waiting'+(tb&&tb.park?', '+tb.park+' parked':''):(tb?tb.n:0)+(t.kind==='dedupe'?' ids':' rows'));if(t.kind==='queue'&&tb)g=Math.max(g,tb.rows.length/500)}}
@@ -2506,11 +2437,11 @@ function updDock(){if($('#dock').classList.contains('min'))return;const A=sim.A,
   setHtml($('#logl'),o||'<span class="muted">No events yet. Faults, crashes, circuit breakers and ejections are logged here.</span>')}}
 
 /* ---------- static design review ---------- */
-function estLat(n,d){if(!n||d>6)return 0;const k=KIND(n);if(k==='service')return n.cfg.procMs+n.cfg.actions.reduce((s,a)=>{const e=edgeById(a.edge);if(!e||a.await===false||a.when==='fallback'||(a.outbox&&MSGK[KIND(nodeById(e.to))]))return s;return s+2*e.cfg.latency+estLat(nodeById(e.to),d+1)},0);
+function estLat(n,d){if(!n||d>6)return 0;const k=KIND(n);if(k==='service')return n.cfg.procMs+n.cfg.actions.reduce((s,a)=>{const e=edgeById(a.edge);if(!e||a.await===false||a.when==='fallback')return s;return s+2*e.cfg.latency+estLat(nodeById(e.to),d+1)},0);
  if(k==='proxy'){const o=M.edges.filter(e=>e.from===n.id);return n.cfg.latency+(o.length?o.reduce((s,e)=>s+estLat(nodeById(e.to),d+1),0)/o.length:0)}
  if(k==='cache')return n.cfg.latency;return(n.cfg.latency||0)*(n.fault.latencyMult||1)}
 function svcCap(n){return sim.workers(n)/Math.max(0.5,estLat(n,0)*(n.fault.latencyMult||1))*1000}
-function worstTime(n,d){if(!n||d>6)return 0;const k=KIND(n);if(k==='service')return n.cfg.procMs+n.cfg.actions.reduce((s,a)=>{const e=edgeById(a.edge);if(!e||a.await===false||(a.outbox&&MSGK[KIND(nodeById(e.to))]))return s;return s+a.timeout*((a.retries|0)+1)},0);if(k==='proxy')return n.cfg.timeout;return 0}
+function worstTime(n,d){if(!n||d>6)return 0;const k=KIND(n);if(k==='service')return n.cfg.procMs+n.cfg.actions.reduce((s,a)=>{const e=edgeById(a.edge);if(!e||a.await===false)return s;return s+a.timeout*((a.retries|0)+1)},0);if(k==='proxy')return n.cfg.timeout;return 0}
 function offeredLoad(){const load={};const go=(id,rate,d)=>{if(d>10||rate<=0)return;const n=nodeById(id);if(!n)return;load[id]=(load[id]||0)+rate;const k=KIND(n),outs=M.edges.filter(e=>e.from===id);
   if(k==='proxy'||k==='queue'){const r=rate*(k==='proxy'?1-(n.cfg.hitRatio||0)/100:1);for(const e of outs)go(e.to,r/outs.length,d+1)}
   else if(k==='service'){for(const a of n.cfg.actions){const e=edgeById(a.edge);if(e&&a.when!=='fallback'){go(e.to,rate,d+1);const db=nodeById(e.to),T=tableOf(db,e.cfg.table);if(T&&T.kind==='queue')for(const pe of M.edges)if(pe.from===db.id&&pe.cfg.table===T.id)go(pe.to,rate,d+1)}}}
@@ -2520,7 +2451,7 @@ function relMax(n){let mx=0;for(const t of String(n.cfg.release==null?'':n.cfg.r
 function prodPeak(n){const s=n.fault.surge||1;return n.cfg.mode==='schedule'?relMax(n)/Math.max(1,(+n.cfg.spreadMs||0)/1000)*s:Math.max(n.cfg.rateMin,n.cfg.rateMax)*s}
 function syncDepth(n,d){if(!n||d>8)return 0;const k=KIND(n),outs=M.edges.filter(e=>e.from===n.id);
  if(k==='producer'||k==='proxy')return outs.reduce((m,e)=>Math.max(m,syncDepth(nodeById(e.to),d+1)),0);
- if(k==='service'){if(n.cfg.respond==='ack')return 1;return 1+n.cfg.actions.reduce((m,a)=>{const e=edgeById(a.edge);if(!e||a.await===false||a.onError==='continue'||(a.outbox&&MSGK[KIND(nodeById(e.to))]))return m;return Math.max(m,syncDepth(nodeById(e.to),d+1))},0)}
+ if(k==='service'){if(n.cfg.respond==='ack')return 1;return 1+n.cfg.actions.reduce((m,a)=>{const e=edgeById(a.edge);if(!e||a.await===false||a.onError==='continue')return m;return Math.max(m,syncDepth(nodeById(e.to),d+1))},0)}
  return k==='note'?0:1}
 function lint(){const out=[],add=(lvl,n,title,text)=>out.push({lvl,id:n?n.id:'',title:(n?n.name+' — ':'')+title,text}),load=offeredLoad();
  for(const e of M.edges){const a=nodeById(e.from),b=nodeById(e.to);if(!a||!b)continue;const kb=KIND(b);
@@ -2543,27 +2474,20 @@ function lint(){const out=[],add=(lvl,n,title,text)=>out.push({lvl,id:n?n.id:'',
  for(const n of M.nodes){const k=KIND(n),ins=M.edges.filter(e=>e.to===n.id),outs=M.edges.filter(e=>e.from===n.id);
   if(k==='service'){const acts=n.cfg.actions.map(a=>{const e=edgeById(a.edge),d=e&&nodeById(e.to);return d?{a,e,d,dk:KIND(d)}:null}).filter(Boolean);
    const w=acts.filter(x=>x.a.op!=='read'),dbw=w.filter(x=>x.dk==='store'),pub=w.filter(x=>MSGK[x.dk]),rem=acts.filter(x=>x.dk==='service'||x.dk==='external'||x.dk==='proxy');
-   const raw=pub.find(x=>!x.a.outbox);
+   const raw=pub[0];
    if(dbw.length&&raw)add('risk',n,'dual write','Writes '+dbw[0].d.name+' and publishes to '+raw.d.name+' as two separate steps. A failure between them leaves the database and the topic disagreeing. Consider the transactional outbox.');
-   if(pub.some(x=>x.a.outbox))add('good',n,'transactional outbox','Events commit atomically with the data and are relayed at-least-once. Downstream consumers must tolerate duplicates.');
-   if(w.length>=2&&!w.some(x=>x.a.onError==='compensate')&&w.filter(x=>!(x.a.tx&&x.dk==='store')&&!x.a.outbox&&x.a.onError!=='continue').length>=2)add('warn',n,'multi-step write without atomicity',w.length+' side effects with no shared transaction or compensation: a failure part-way leaves partial state.');
+   {const qt=x=>{const e=edgeById(x.a.edge),T=e&&tableOf(x.d,e.cfg.table);return!!(x.a.tx&&T&&T.kind==='queue')};if(w.some(qt)&&w.some(x=>{const e=edgeById(x.a.edge),T=e&&tableOf(x.d,e.cfg.table);return x.a.tx&&x.dk==='store'&&!qt(x)&&!(T&&T.kind==='dedupe')}))add('good',n,'transactional outbox','Event rows commit atomically with the data, and a relay publishes them at-least-once. Downstream consumers must tolerate duplicates.')}
+   if(w.length>=2&&!w.some(x=>x.a.onError==='compensate')&&w.filter(x=>!(x.a.tx&&x.dk==='store')&&x.a.onError!=='continue').length>=2)add('warn',n,'multi-step write without atomicity',w.length+' side effects with no shared transaction or compensation: a failure part-way leaves partial state.');
    if(dbw.some(x=>x.a.tx)&&rem.some(x=>x.a.await!==false))add('warn',n,'remote call inside a DB transaction','The transaction and its pooled connection stay open while waiting on the network, and a rollback cannot undo the remote call.');
    if(w.some(x=>x.a.onError==='compensate')){add('good',n,'saga compensation','Completed steps are undone when a later step fails. Compensation can itself fail.');if(raw)add('warn',n,'compensation cannot unsend events','A message published to '+raw.d.name+' cannot be recalled when a later step fails.')}
-   for(const x of acts){if(x.a.retries>0&&x.a.op!=='read'&&x.dk!=='proxy'&&!x.d.cfg.idempotent&&!(x.a.outbox&&MSGK[x.dk]))add('risk',n,'retries a non-idempotent call','→ '+x.d.name+' is retried '+x.a.retries+'×, but '+x.d.name+' is not idempotent. A timeout followed by a retry applies the effect twice.');
+   for(const x of acts){if(x.a.retries>0&&x.a.op!=='read'&&x.dk!=='proxy'&&!x.d.cfg.idempotent)add('risk',n,'retries a non-idempotent call','→ '+x.d.name+' is retried '+x.a.retries+'×, but '+x.d.name+' is not idempotent. A timeout followed by a retry applies the effect twice.');
     if(x.a.retries>=2&&x.a.backoff<50)add('warn',n,'retries without backoff','→ '+x.d.name+': immediate retries multiply load on a dependency that is already struggling.');
     if(x.a.breaker)add('good',n,'circuit breaker','→ '+x.d.name+': fails fast after 5 consecutive failures instead of tying up workers.');
     if(x.a.await===false)add('warn',n,'fire-and-forget call','→ '+x.d.name+': failures are invisible to this service.');
     if(x.a.onError==='continue'&&x.a.when!=='fallback')add('info',n,'best-effort step','→ '+x.d.name+' may be skipped on failure; the request still succeeds (degraded).')}
    {const ld=load[n.id]||0,c=n.cfg;
-    if(pub.some(x=>x.a.outbox)){if(c.outboxMode==='cdc')add('info',n,'outbox via CDC','Events leave within milliseconds of commit, at the cost of running log-tailing infrastructure.');
-     else{const oc=c.outboxBatch/c.outboxPollMs*1000;if(ld>oc)add('risk',n,'outbox relay cannot keep up','Polling '+c.outboxBatch+' rows every '+c.outboxPollMs+' ms publishes at most '+f1(oc)+' msg/s, but up to '+f1(ld)+' req/s arrive. The outbox table grows and events fall further behind.');
-      else if(c.outboxPollMs>=1000)add('info',n,'outbox polling delay','Events wait up to '+ms(c.outboxPollMs)+' before they are published, and arrive downstream in bursts of up to '+c.outboxBatch+'.')}
-     if(c.outboxMark==='batch')add('warn',n,'outbox rows marked per batch','One failed publish or a crash re-publishes the whole batch of '+c.outboxBatch+': consumers see many duplicates.');
-     if(c.outboxSend==='parallel')add('info',n,'outbox batch published in parallel','Faster, but events for the same key can overtake each other.')}
-    if(c.inbox){add('good',n,'inbox','Messages are stored durably, acknowledged at once and de-duplicated; a crash does not lose accepted work.');const ic=c.inboxBatch/c.inboxPollMs*1000;
-     if(ld>ic)add('risk',n,'inbox poller cannot keep up','Polling '+c.inboxBatch+' rows every '+c.inboxPollMs+' ms processes at most '+f1(ic)+' msg/s, but up to '+f1(ld)+' msg/s arrive.');
-     else add('info',n,'inbox adds delay','Every message waits up to '+ms(c.inboxPollMs)+' for the next poll before processing starts.')}}
-   if(n.cfg.respond==='ack'&&!n.cfg.inbox)add('warn',n,'acknowledges before doing the work','Accepted requests live only in memory. A crash or error loses them after the caller was told OK.');
+    }
+   if(n.cfg.respond==='ack')add('warn',n,'acknowledges before doing the work','Accepted requests live only in memory. A crash or error loses them after the caller was told OK.');
    if(n.cfg.queueCap>=5000)add('warn',n,'effectively unbounded queue','Under overload, latency grows without limit instead of load being shed, and work is done for callers that already gave up.');
    if(n.cfg.badData==='ignore')add('warn',n,'no input validation','Malformed data is processed and persisted.');
    if(n.cfg.idempotent)add('good',n,'idempotent consumer','Repeated deliveries of a completed request are skipped.');
@@ -2612,7 +2536,7 @@ function laneBar(){const ls=M.lanes||[];if(ls.length<2)return'';const f=LF(),b=(
 function laneOfId(id){const x=nodeById(id);if(x)return x.lane||'';const m=M.nodes.find(y=>y.group===id&&y.lane);return m?m.lane:''}
 function scoreData(fnd,lane){const nn=M.nodes.filter(n=>KIND(n)!=='note'&&(!lane||n.lane===lane)),ids=new Set(nn.map(n=>n.id)),es=M.edges.filter(e=>ids.has(e.from)),ff=lane?fnd.filter(f=>f.lane===lane):fnd,cnt=l=>ff.filter(f=>f.lvl===l).length;
  let depth=0;for(const n of nn)if(KIND(n)==='producer')depth=Math.max(depth,syncDepth(n,0));
- const mech=new Set();for(const n of nn){const k=KIND(n);if(k==='service'){if(n.cfg.idempotent)mech.add('idempotent consumer');for(const a of n.cfg.actions){if(a.retries>0)mech.add('retries');if(a.breaker)mech.add('circuit breaker');if(a.outbox)mech.add('outbox');if(a.tx)mech.add('transactions');if(a.onError==='compensate')mech.add('saga');if(n.cfg.inbox)mech.add('inbox');if(a.when==='fallback'||a.onError==='continue')mech.add('fallback');if(a.when==='error')mech.add('error path');if(a.guard)mech.add('version check');if(a.check)mech.add('read-before-write de-dupe')}if(n.cfg.queueCap<=200)mech.add('load shedding')}
+ const mech=new Set();for(const n of nn){const k=KIND(n);if(k==='service'){if(n.cfg.idempotent)mech.add('idempotent consumer');for(const a of n.cfg.actions){if(a.retries>0)mech.add('retries');if(a.breaker)mech.add('circuit breaker');{const e=edgeById(a.edge),T=e&&tableOf(nodeById(e.to),e.cfg.table);if(a.tx&&T&&T.kind==='queue')mech.add('transactional work table')}if(a.tx)mech.add('transactions');if(a.onError==='compensate')mech.add('saga');if(a.when==='fallback'||a.onError==='continue')mech.add('fallback');if(a.when==='error')mech.add('error path');if(a.guard)mech.add('version check');if(a.check)mech.add('read-before-write de-dupe')}if(n.cfg.queueCap<=200)mech.add('load shedding')}
   if(k==='producer'&&n.cfg.retries>0)mech.add('retries');if(k==='proxy'){if(n.cfg.healthEject)mech.add('health checks');if(n.cfg.rateLimit>0)mech.add('rate limiting')}if(k==='cache')mech.add('caching');if(k==='log'||k==='queue')mech.add('async messaging');if((k==='store'||k==='external')&&n.cfg.idempotent)mech.add('idempotent writes');
   if(k==='store'&&(n.cfg.tables||[]).some(t=>t.kind==='dedupe'))mech.add('de-dupe table')}
  for(const e of es)if(e.cfg.sub&&e.cfg.sub.onExhaust==='dlq')mech.add('DLQ');
@@ -2790,12 +2714,11 @@ function showLibrary(){const saved=LS.get('faultline.systems',{}),names=Object.k
     h('button',{class:'sm',onclick:()=>{if(M.nodes.length)snap('open saved system');gmark('lib');loadModel(clone(saved[n]));closeModal()}},'Open'),h('button',{class:'sm warn',onclick:()=>{delete saved[n];LS.set('faultline.systems',saved);showLibrary()}},'Delete'))):h('p',{class:'muted'},'Nothing saved yet. "Save" stores the current system together with its failure scenarios; "Export" downloads it as a file.'))}
 function showHelp(){showModal(h('h2',null,'How Faultline works',h('button',{onclick:closeModal},'Close')),h('ul',{class:'help',html:`
 <li><b>Build.</b> Click or drag components from the left. Drag from a node's <b>●</b> to another node to connect them. Sources emit requests; a connection out of a <b>service</b> becomes one of its ordered <b>actions</b> (write a DB, publish an event, call an API). A connection out of a topic or queue is a <b>subscription</b>.</li>
-<li><b>Configure.</b> Select a node or connection. For a service you can reorder actions, put DB writes in a transaction, publish through an outbox, and choose per action what a failure does (abort, ignore, compensate, fallback), with timeouts, retries and a circuit breaker.</li>
+<li><b>Configure.</b> Select a node or connection. For a service you can reorder actions, put DB writes in a transaction, and choose per action what a failure does (abort, ignore, compensate, fallback), with timeouts, retries and a circuit breaker.</li>
 <li><b>Break it.</b> Every node and every connection has an <b>⚡ Inject faults</b> section: down, error rate, slow, hang, reduced capacity, crash, packet loss, lost responses, resets, corruption, duplicates, partitions, traffic surges, malformed data. Save a combination as a <b>failure scenario</b>; it is stored with the system.</li>
 <li><b>Observe.</b> <b>Messages</b> view draws requests (blue), successful responses (green), errors (red) and drops (✕) — use 0.1× speed to follow a single request. <b>Flow</b> view shows aggregate rate and failure share per connection for high traffic.</li>
 <li><b>Audit.</b> Every request is traced until all of its effects settle, then classified: clean, lost, duplicate, partial, ghost, corrupt, out of order, stale, parked. Click an anomaly for its timeline.</li>
 <li><b>One message at a time.</b> Every source has a <b>▶ 1</b> button. While the clock is paused it sends a single message, runs in slow motion with all sources held until that message has settled, then pauses again; its hops are listed in the source's panel. <b>✋ Hold sources</b> silences automatic traffic while the clock keeps running.</li>
-<li><b>Outbox and inbox.</b> A service's <b>Outbox relay</b> section sets how outbox rows are picked up (poll interval and batch size, or CDC), whether a batch is published in order, and when rows are marked as sent. Its <b>Inbox</b> section stores incoming messages first and processes them in polled batches.</li>
 <li><b>Schedulers.</b> A Scheduler / Cron releases a batch every interval. "Messages per run" takes a repeating pattern such as <kbd>0,0,0,2000</kbd>, and the batch can be released at once or spread over a window.</li>
 <li><b>Tables and polling loops.</b> Select a database and add <b>tables</b> (inbox, outbox, de-dupe, data). Each table is a row under the node and its own connection point: drop a service's connection on a row to write to that table, and drag the <b>●</b> on a work table to a <b>Polling loop</b> that reads it in batches. The dashed line from the table carries the poll interval, batch size, ordering and how rows are marked done. A de-dupe table makes a repeated message a unique-key hit that the consumer skips.</li>
 <li><b>Applications.</b> Add an <b>Application</b> box and drop services into it. It is deployed as <b>clusters</b> (shards by key; the tabs on the box) → <b>server groups</b> (builds; the sections under the title, always 100% of a cluster's traffic between them) → <b>regions</b> (instances per data centre). Select the box to edit the hierarchy, lose a region or a cluster, kill an instance, ship a bad build, or run a <b>canary</b>, <b>blue/green</b>, <b>highlander</b> or <b>A/B</b> cut-over between two server groups. Mark a server group "A/B: own consumer group" to have two builds read the same topic.</li>
